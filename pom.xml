@@ -41,6 +41,7 @@
         <module>rag-engine-autoconfigure</module>
         <module>rag-engine-spring-boot-starter</module>
         <module>rag-engine-web</module>
+        <module>rag-engine-jpa</module>
         <module>rag-engine-sample</module>
     </modules>
 
@@ -86,6 +87,11 @@
             <dependency>
                 <groupId>dev.agentworkshq</groupId>
                 <artifactId>rag-engine-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.agentworkshq</groupId>
+                <artifactId>rag-engine-jpa</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

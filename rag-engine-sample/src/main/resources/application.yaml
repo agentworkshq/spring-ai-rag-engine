@@ -1,3 +1,8 @@
 spring:
   application:
     name: rag-engine-sample
+  flyway:
+    locations: classpath:db/migration,classpath:db/rag
+  jpa:
+    hibernate:
+      ddl-auto: validate
