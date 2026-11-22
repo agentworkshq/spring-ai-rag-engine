@@ -9,3 +9,7 @@ A RAG engine library built on Spring AI.
     <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
+
+## Notes
+
+405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
