@@ -19,7 +19,12 @@ public enum ErrorMessages {
     RAG_E015(500, "Failed to read %s"),
     RAG_E016(409, "Ingestion is already running for source %s and tenant %s"),
     RAG_E017(500, "Source %s returned no items but has registered documents, nothing was deleted"),
-    RAG_E018(404, "Source %s not found");
+    RAG_E018(404, "Source %s not found"),
+    RAG_E019(500, "No VectorStore bean found, add a Spring AI vector store starter such as spring-ai-starter-vector-store-pgvector"),
+    RAG_E020(500, "No ChatClient.Builder bean found, add a Spring AI chat model starter such as spring-ai-starter-model-openai"),
+    RAG_E021(400, "Tenant id must not be blank"),
+    RAG_E022(400, "Question must not be blank"),
+    RAG_E023(400, "Question exceeds the maximum length of %d characters");
 
     private final int httpStatus;
     private final String message;

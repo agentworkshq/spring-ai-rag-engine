@@ -11,6 +11,8 @@ public record RagEngineProperties(
         @DefaultValue Chunking chunking,
         @DefaultValue Limits limits,
         @DefaultValue Ingestion ingestion,
+        @DefaultValue Retrieval retrieval,
+        @DefaultValue Answer answer,
         List<Source> sources) {
 
     public RagEngineProperties {
@@ -58,6 +60,44 @@ public record RagEngineProperties(
         public Ingestion {
             if (batchSize <= 0) {
                 throw new IllegalArgumentException("rag-engine.ingestion.batch-size must be positive");
+            }
+        }
+    }
+
+    public record Retrieval(
+            @DefaultValue("6") int topK,
+            @DefaultValue("20") int maxTopK,
+            @DefaultValue("0.65") double similarityThreshold,
+            @DefaultValue("false") boolean queryRewrite) {
+
+        public Retrieval {
+            if (topK <= 0 || maxTopK <= 0) {
+                throw new IllegalArgumentException("rag-engine.retrieval.top-k and max-top-k must be positive");
+            }
+            if (topK > maxTopK) {
+                throw new IllegalArgumentException("rag-engine.retrieval.top-k must not be above max-top-k");
+            }
+            if (similarityThreshold < 0 || similarityThreshold > 1) {
+                throw new IllegalArgumentException("rag-engine.retrieval.similarity-threshold must be between 0 and 1");
+            }
+        }
+    }
+
+    public record Answer(
+            @DefaultValue("true") boolean citeSources,
+            @DefaultValue("I could not find the answer in the provided documents.") String noAnswerMessage,
+            @DefaultValue("12000") int maxContextChars,
+            @DefaultValue("2000") int maxQuestionLength) {
+
+        public Answer {
+            if (noAnswerMessage == null || noAnswerMessage.isBlank()) {
+                throw new IllegalArgumentException("rag-engine.answer.no-answer-message must not be blank");
+            }
+            if (maxContextChars <= 0) {
+                throw new IllegalArgumentException("rag-engine.answer.max-context-chars must be positive");
+            }
+            if (maxQuestionLength <= 0) {
+                throw new IllegalArgumentException("rag-engine.answer.max-question-length must be positive");
             }
         }
     }

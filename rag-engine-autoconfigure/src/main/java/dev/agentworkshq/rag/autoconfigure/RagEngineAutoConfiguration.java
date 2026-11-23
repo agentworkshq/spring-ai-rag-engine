@@ -1,5 +1,9 @@
 package dev.agentworkshq.rag.autoconfigure;
 
+import dev.agentworkshq.rag.core.answer.NoopReranker;
+import dev.agentworkshq.rag.core.answer.RagService;
+import dev.agentworkshq.rag.core.answer.RagSettings;
+import dev.agentworkshq.rag.core.answer.Reranker;
 import dev.agentworkshq.rag.core.ingest.ChunkingStrategy;
 import dev.agentworkshq.rag.core.ingest.DefaultDocumentLoader;
 import dev.agentworkshq.rag.core.ingest.DocumentLoader;
@@ -17,15 +21,15 @@ import dev.agentworkshq.rag.core.store.IngestionJobStore;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
-@AutoConfiguration(afterName = "org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration")
+@AutoConfiguration
 @EnableConfigurationProperties(RagEngineProperties.class)
 public class RagEngineAutoConfiguration {
 
@@ -69,24 +73,40 @@ public class RagEngineAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(VectorStore.class)
     @ConditionalOnMissingBean
-    IngestionPipeline ingestionPipeline(VectorStore vectorStore, DocumentLoader documentLoader,
+    IngestionPipeline ingestionPipeline(ObjectProvider<VectorStore> vectorStore, DocumentLoader documentLoader,
                                         ChunkingStrategy chunkingStrategy, DocumentRegistry documentRegistry,
                                         IngestionJobStore ingestionJobStore, RagEngineProperties properties) {
         RagEngineProperties.Chunking chunking = properties.chunking();
         String signature = chunking.strategy() == RagEngineProperties.Chunking.Strategy.FIXED
                 ? "FIXED:" + chunking.chunkSize()
                 : "RECURSIVE:" + chunking.chunkSize() + ":" + chunking.overlap();
-        return new IngestionPipeline(vectorStore, documentLoader, chunkingStrategy, documentRegistry,
-                ingestionJobStore, signature, properties.ingestion().batchSize(),
+        return new IngestionPipeline(vectorStore::getIfAvailable, documentLoader, chunkingStrategy,
+                documentRegistry, ingestionJobStore, signature, properties.ingestion().batchSize(),
                 properties.ingestion().allowEmptySource());
     }
 
     @Bean
-    @ConditionalOnBean(IngestionPipeline.class)
     @ConditionalOnMissingBean
     IngestionService ingestionService(SourceRegistry sourceRegistry, IngestionPipeline ingestionPipeline) {
         return new IngestionService(sourceRegistry, ingestionPipeline);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    Reranker reranker() {
+        return new NoopReranker();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    RagService ragService(ObjectProvider<VectorStore> vectorStore, ObjectProvider<ChatClient.Builder> chatClient,
+                          Reranker reranker, RagEngineProperties properties) {
+        RagEngineProperties.Retrieval retrieval = properties.retrieval();
+        RagEngineProperties.Answer answer = properties.answer();
+        RagSettings settings = new RagSettings(retrieval.topK(), retrieval.maxTopK(), retrieval.similarityThreshold(),
+                retrieval.queryRewrite(), answer.citeSources(), answer.noAnswerMessage(), answer.maxContextChars(),
+                answer.maxQuestionLength());
+        return new RagService(vectorStore::getIfAvailable, chatClient::getIfAvailable, reranker, settings);
     }
 }

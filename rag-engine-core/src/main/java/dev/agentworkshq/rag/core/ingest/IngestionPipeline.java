@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +27,7 @@ public class IngestionPipeline {
 
     private static final Logger log = LoggerFactory.getLogger(IngestionPipeline.class);
 
-    private final VectorStore vectorStore;
+    private final Supplier<VectorStore> vectorStores;
     private final DocumentLoader loader;
     private final ChunkingStrategy chunker;
     private final DocumentRegistry registry;
@@ -36,10 +37,10 @@ public class IngestionPipeline {
     private final boolean allowEmptySource;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
-    public IngestionPipeline(VectorStore vectorStore, DocumentLoader loader, ChunkingStrategy chunker,
+    public IngestionPipeline(Supplier<VectorStore> vectorStores, DocumentLoader loader, ChunkingStrategy chunker,
                              DocumentRegistry registry, IngestionJobStore jobs, String chunkingSignature,
                              int batchSize, boolean allowEmptySource) {
-        this.vectorStore = vectorStore;
+        this.vectorStores = vectorStores;
         this.loader = loader;
         this.chunker = chunker;
         this.registry = registry;
@@ -50,6 +51,10 @@ public class IngestionPipeline {
     }
 
     public IngestionResult ingest(RagSource source, String tenantId) {
+        VectorStore store = vectorStores.get();
+        if (store == null) {
+            throw new ServiceException(ErrorMessages.RAG_E019);
+        }
         String lockKey = source.name() + "\u0000" + tenantId;
         if (!running.add(lockKey)) {
             throw new ServiceException(ErrorMessages.RAG_E016, source.name(), tenantId);
@@ -57,7 +62,7 @@ public class IngestionPipeline {
         Long jobId = null;
         try {
             jobId = jobs.start(source.name()).id();
-            return run(source, tenantId, jobId);
+            return run(source, tenantId, jobId, store);
         } catch (RuntimeException e) {
             log.error("Ingestion of source {} for tenant {} failed", source.name(), tenantId, e);
             if (jobId != null) {
@@ -72,7 +77,7 @@ public class IngestionPipeline {
         }
     }
 
-    private IngestionResult run(RagSource source, String tenantId, Long jobId) {
+    private IngestionResult run(RagSource source, String tenantId, Long jobId, VectorStore store) {
         String sourceName = source.name();
         List<SourceItem> items;
         try (Stream<SourceItem> scan = source.scan()) {
@@ -93,7 +98,7 @@ public class IngestionPipeline {
         for (SourceItem item : items) {
             seen.add(item.externalId());
             try {
-                switch (process(sourceName, tenantId, item, known.get(item.externalId()))) {
+                switch (process(store, sourceName, tenantId, item, known.get(item.externalId()))) {
                     case ADDED -> added++;
                     case UPDATED -> updated++;
                     case SKIPPED -> skipped++;
@@ -109,7 +114,7 @@ public class IngestionPipeline {
                 continue;
             }
             try {
-                deleteChunks(documentId(sourceName, record.externalId()), sourceName, tenantId);
+                deleteChunks(store, documentId(sourceName, record.externalId()), sourceName, tenantId);
                 registry.delete(sourceName, record.externalId(), tenantId);
                 deleted++;
             } catch (RuntimeException e) {
@@ -123,7 +128,8 @@ public class IngestionPipeline {
         return new IngestionResult(added, updated, deleted, skipped, failed, jobId);
     }
 
-    private Outcome process(String sourceName, String tenantId, SourceItem item, SourceDocumentRecord existing) {
+    private Outcome process(VectorStore store, String sourceName, String tenantId, SourceItem item,
+                            SourceDocumentRecord existing) {
         String fileHash = ContentHasher.fileHash(item);
         String effectiveHash = ContentHasher.effectiveHash(fileHash, chunkingSignature);
         if (existing != null && existing.contentHash().equals(effectiveHash)) {
@@ -134,15 +140,15 @@ public class IngestionPipeline {
         List<Document> chunks = enrich(chunker.split(loader.load(item)), sourceName, tenantId, documentId, fileHash);
         try {
             // always cleared first so a partly failed earlier run can never leave duplicates behind
-            deleteChunks(documentId, sourceName, tenantId);
+            deleteChunks(store, documentId, sourceName, tenantId);
             for (int i = 0; i < chunks.size(); i += batchSize) {
-                vectorStore.add(chunks.subList(i, Math.min(chunks.size(), i + batchSize)));
+                store.add(chunks.subList(i, Math.min(chunks.size(), i + batchSize)));
             }
             registry.save(new SourceDocumentRecord(sourceName, item.externalId(), tenantId, effectiveHash,
                     chunks.size()));
         } catch (RuntimeException e) {
             try {
-                deleteChunks(documentId, sourceName, tenantId);
+                deleteChunks(store, documentId, sourceName, tenantId);
             } catch (RuntimeException cleanup) {
                 log.warn("Cleanup of {} in source {} failed: {}", item.externalId(), sourceName, cleanup.toString());
             }
@@ -170,9 +176,9 @@ public class IngestionPipeline {
         return result;
     }
 
-    private void deleteChunks(String documentId, String sourceName, String tenantId) {
+    private void deleteChunks(VectorStore store, String documentId, String sourceName, String tenantId) {
         FilterExpressionBuilder b = new FilterExpressionBuilder();
-        vectorStore.delete(b.and(
+        store.delete(b.and(
                 b.and(b.eq(ChunkMetadata.DOCUMENT_ID, documentId), b.eq(ChunkMetadata.SOURCE_NAME, sourceName)),
                 b.eq(ChunkMetadata.TENANT_ID, tenantId)).build());
     }

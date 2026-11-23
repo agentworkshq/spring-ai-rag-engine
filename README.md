@@ -42,4 +42,6 @@ If the host declares its own `@EnableJpaRepositories` or `@EntityScan`, it must 
 
 `RecursiveChunker` counts characters. `FixedTokenChunker` counts tokens and ignores overlap. `chunkSize` therefore means different units for the two strategies.
 
+The ingestion lock works inside one JVM only. When running several instances, use an external scheduler or lock so only one instance ingests a given source and tenant at a time.
+
 A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest.
