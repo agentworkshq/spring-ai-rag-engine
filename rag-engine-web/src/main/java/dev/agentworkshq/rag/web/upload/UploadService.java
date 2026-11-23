@@ -1,6 +1,7 @@
 package dev.agentworkshq.rag.web.upload;
 
 import dev.agentworkshq.rag.core.constants.ErrorMessages;
+import dev.agentworkshq.rag.core.exception.ResourceNotFoundException;
 import dev.agentworkshq.rag.core.exception.ServiceException;
 import dev.agentworkshq.rag.core.ingest.DefaultDocumentLoader;
 import dev.agentworkshq.rag.core.ingest.DocumentIngestResult;
@@ -66,6 +67,12 @@ public class UploadService {
 
     public List<SourceDocumentRecord> list(String tenantId) {
         return ingestionService.listDocuments(SourceRegistry.UPLOADS, tenantId);
+    }
+
+    public SourceDocumentRecord get(String externalId, String tenantId) {
+        String name = FileNames.requireValid(externalId);
+        return list(tenantId).stream().filter(d -> d.externalId().equals(name)).findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.RAG_E002, name));
     }
 
     public void delete(String externalId, String tenantId) {

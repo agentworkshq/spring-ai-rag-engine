@@ -1,0 +1,7 @@
+Aurora Home Hub - Troubleshooting
+
+How to reset the device: hold the reset button on the back of the hub for 10 seconds, until the status light turns solid red and then starts flashing white. Release the button and wait about two minutes while the hub restarts. A reset removes your Wi-Fi settings and all pairings, so you must set the hub up again in the app.
+
+If the status light is flashing orange, the hub cannot reach your Wi-Fi network. Check that the router is on, that it uses 2.4 GHz, and move the hub closer to the router.
+
+If a paired device shows as offline in the app, replace its battery first. If it is still offline, remove it in the app and pair it again.

@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Make the Maven wrapper executable
+        run: chmod +x mvnw
+      - name: Build and test the library modules
+        run: ./mvnw -B -ntp verify -pl "!rag-engine-sample"
+      - name: Compile everything
+        run: ./mvnw -B -ntp -DskipTests verify

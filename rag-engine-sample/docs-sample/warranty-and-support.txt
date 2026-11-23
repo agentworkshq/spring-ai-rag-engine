@@ -1,0 +1,7 @@
+Aurora Home Hub - Warranty and Support
+
+The Aurora Home Hub comes with a 2 year limited warranty that starts on the purchase date. It covers manufacturing defects. It does not cover water damage, drops or use with a power adapter other than the one supplied.
+
+To make a warranty claim, contact support through the Help section of the Aurora app and attach your order number. Support answers within 2 business days, Monday to Friday.
+
+Firmware updates are free and install automatically at night when the hub is idle. You can also start an update by hand in the app under Settings, then Hub, then Check for updates.

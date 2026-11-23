@@ -1,16 +1,39 @@
 spring:
   application:
     name: rag-engine-sample
+  datasource:
+    url: jdbc:postgresql://localhost:5433/rag
+    username: rag
+    password: rag
   flyway:
     locations: classpath:db/migration,classpath:db/rag
   jpa:
     hibernate:
       ddl-auto: validate
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        options:
+          model: llama3.2
+      embedding:
+        options:
+          model: nomic-embed-text
+      init:
+        pull-model-strategy: when_missing
+        timeout: 15m
+    vectorstore:
+      pgvector:
+        dimensions: 768
+        initialize-schema: true
 
 rag-engine:
   web:
     enabled: true
     require-authentication: false
+    upload:
+      enabled: true
+      require-admin: false
   sources:
     - name: docs
       type: filesystem

@@ -329,6 +329,22 @@ class UploadEndpointsTest {
     }
 
     @Test
+    void getReturnsOneDocumentOr404() {
+        run(OPEN, (context, mvc) -> {
+            mvc.perform(get(DOCS + "/a.txt")).andExpect(status().isNotFound());
+            mvc.perform(multipart(DOCS).file(file("a.txt", "Alpha content. ".repeat(10))))
+                    .andExpect(status().isCreated());
+            mvc.perform(get(DOCS + "/a.txt"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("success"))
+                    .andExpect(jsonPath("$.data.externalId").value("a.txt"))
+                    .andExpect(jsonPath("$.data.chunkCount").isNumber());
+            mvc.perform(get(DOCS + "/.hidden")).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("RAG_E027"));
+        });
+    }
+
+    @Test
     void listIsPagedWithMetadata() {
         run(OPEN, (context, mvc) -> {
             for (String name : new String[] {"a.txt", "b.txt", "c.txt"}) {
@@ -368,6 +384,10 @@ class UploadEndpointsTest {
 
                     mvc.perform(get(DOCS).header("X-Test-Tenant", "B"))
                             .andExpect(jsonPath("$.data.length()").value(0));
+                    mvc.perform(get(DOCS + "/a.txt").header("X-Test-Tenant", "B"))
+                            .andExpect(status().isNotFound());
+                    mvc.perform(get(DOCS + "/a.txt").header("X-Test-Tenant", "A"))
+                            .andExpect(status().isOk());
                     mvc.perform(delete(DOCS + "/a.txt").header("X-Test-Tenant", "B"))
                             .andExpect(status().isNotFound());
                     mvc.perform(get(DOCS).header("X-Test-Tenant", "A"))
@@ -400,6 +420,7 @@ class UploadEndpointsTest {
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.errorCode").value("RAG_E024"));
             mvc.perform(get(DOCS).with(user("OTHER"))).andExpect(status().isForbidden());
+            mvc.perform(get(DOCS + "/a.txt").with(user("OTHER"))).andExpect(status().isForbidden());
             mvc.perform(delete(DOCS + "/a.txt").with(user("OTHER"))).andExpect(status().isForbidden());
             mvc.perform(multipart(DOCS).file(file("a.txt", "content")).with(user("RAG_ADMIN")))
                     .andExpect(status().isCreated());

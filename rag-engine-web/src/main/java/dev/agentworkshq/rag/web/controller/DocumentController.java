@@ -67,6 +67,15 @@ public class DocumentController implements RagControllers {
                 new PageMetadata(page, size, totalPages, all.size())));
     }
 
+    @GetMapping("/documents/{externalId}")
+    public ResponseEntity<ApiResponse<DocumentResponse>> get(@PathVariable String externalId,
+                                                             HttpServletRequest request) {
+        guard.requireUploadAccess(request);
+        SourceDocumentRecord record = uploads.get(externalId, tenantResolver.resolve(request));
+        return ResponseEntity.ok(ApiResponse.success("Document retrieved successfully",
+                DocumentResponse.from(record)));
+    }
+
     @DeleteMapping("/documents/{externalId}")
     public ResponseEntity<Void> delete(@PathVariable String externalId, HttpServletRequest request) {
         guard.requireUploadAccess(request);

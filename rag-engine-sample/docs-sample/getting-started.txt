@@ -1,0 +1,7 @@
+Aurora Home Hub - Getting Started
+
+The Aurora Home Hub is a small smart home controller that connects your lights, thermostats and door sensors to one app.
+
+To set it up, plug the hub into power with the supplied USB-C cable and wait until the status light pulses blue. Install the Aurora app, choose Add Hub, and scan the QR code printed on the bottom of the device. The hub joins your 2.4 GHz Wi-Fi network; it does not support 5 GHz networks.
+
+Each hub can control up to 50 paired devices. To pair a new device, open the app, tap Add Device and hold the device's pairing button for three seconds until it blinks.

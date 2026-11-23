@@ -1,6 +1,12 @@
 # spring-ai-rag-engine
 
-A RAG engine library built on Spring AI.
+A retrieval augmented generation library for Spring Boot, built on Spring AI.
+It ingests documents from configured sources and uploads into your vector store, and answers questions with cited sources.
+It adds change detection, tenant scoping and optional REST endpoints, so you do not have to write the plumbing yourself.
+
+## Use it in your app
+
+The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` in this repository to put them in your local Maven repository.
 
 ```xml
 <dependency>
@@ -8,6 +14,107 @@ A RAG engine library built on Spring AI.
     <artifactId>rag-engine-spring-boot-starter</artifactId>
     <version>0.1.0-SNAPSHOT</version>
 </dependency>
+<dependency>
+    <groupId>dev.agentworkshq</groupId>
+    <artifactId>rag-engine-web</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+</dependency>
+```
+
+You also need a Spring AI chat model, an embedding model and a vector store on the classpath. Minimal configuration:
+
+```yaml
+rag-engine:
+  web:
+    enabled: true
+  sources:
+    - name: docs
+      type: filesystem
+      path: ./docs
+```
+
+The endpoints then live under `/api/rag` and require an authenticated user. See the sections below for all properties.
+
+## Try the sample
+
+`rag-engine-sample` runs the library against PostgreSQL with pgvector and a local Ollama model. Authentication is switched off in the sample, so use it for local demos only.
+
+Prerequisites:
+- Java 21
+- Docker with Compose
+- about 6 GB of free RAM
+- the first start downloads about 2 GB of models (llama3.2 and nomic-embed-text), so it takes a few minutes
+
+Start the database and Ollama, then the application:
+
+```bash
+docker compose -f rag-engine-sample/compose.yaml up -d
+./mvnw install -DskipTests
+cd rag-engine-sample && ../mvnw spring-boot:run
+```
+
+On Windows PowerShell:
+
+```powershell
+docker compose -f rag-engine-sample/compose.yaml up -d
+.\mvnw.cmd install -DskipTests
+cd rag-engine-sample; ..\mvnw.cmd spring-boot:run
+```
+
+The application listens on `http://localhost:8080`. Run the examples below from a second terminal in the `rag-engine-sample` directory. Stop everything with `docker compose -f compose.yaml down` (add `-v` to delete the data).
+
+Ingest the documents in `docs-sample`:
+
+```bash
+curl -X POST http://localhost:8080/api/rag/sources/docs/ingest
+```
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/rag/sources/docs/ingest
+```
+
+Ask a question:
+
+```bash
+curl -X POST http://localhost:8080/api/rag/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How do I reset the device?"}'
+```
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/rag/ask `
+  -ContentType "application/json" `
+  -Body '{"question": "How do I reset the device?"}' | ConvertTo-Json -Depth 10
+```
+
+Upload a document:
+
+```bash
+curl -F "file=@docs-sample/warranty-and-support.txt" http://localhost:8080/api/rag/documents
+```
+
+```powershell
+curl.exe -F "file=@docs-sample/warranty-and-support.txt" http://localhost:8080/api/rag/documents
+```
+
+List uploaded documents:
+
+```bash
+curl "http://localhost:8080/api/rag/documents?page=0&size=20"
+```
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8080/api/rag/documents?page=0&size=20" | ConvertTo-Json -Depth 10
+```
+
+Delete an uploaded document:
+
+```bash
+curl -X DELETE http://localhost:8080/api/rag/documents/warranty-and-support.txt
+```
+
+```powershell
+Invoke-RestMethod -Method Delete -Uri http://localhost:8080/api/rag/documents/warranty-and-support.txt
 ```
 
 ## Persistence (optional)
@@ -76,6 +183,7 @@ Document upload is off by default. Enable it with `rag-engine.web.upload.enabled
 |---|---|
 | `POST /documents` | `multipart/form-data` with a part named `file`. 201 with a `Location` header when added, 200 when updated or unchanged. |
 | `GET /documents?page=&size=` | The tenant's documents with page metadata. `size` defaults to 20, maximum 100. |
+| `GET /documents/{externalId}` | One document of the tenant. 404 when unknown. |
 | `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
 
 | Property | Default | Description |
@@ -94,6 +202,8 @@ Safety rules:
 - The document count per tenant is checked before ingesting.
 
 ## Notes
+
+`POST /sources/{name}/ingest` is synchronous, so a large source can hit HTTP timeouts in clients and proxies. `/ask` has no rate limiting; adding it is the host application's responsibility.
 
 405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
 
