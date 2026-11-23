@@ -128,9 +128,7 @@ public class DefaultDocumentLoader implements DocumentLoader {
     }
 
     private static ServiceException readFailure(SourceItem item, IOException cause) {
-        ServiceException ex = new ServiceException(ErrorMessages.RAG_E015, item.externalId());
-        ex.initCause(cause);
-        return ex;
+        return new ServiceException(cause, ErrorMessages.RAG_E015, item.externalId());
     }
 
     private static String extension(String filename) {

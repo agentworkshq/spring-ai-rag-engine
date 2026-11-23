@@ -16,8 +16,12 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FilesystemSource implements RagSource {
+
+    private static final Logger log = LoggerFactory.getLogger(FilesystemSource.class);
 
     private final String name;
     private final Path root;
@@ -59,7 +63,7 @@ public class FilesystemSource implements RagSource {
                 }
             });
         } catch (IOException e) {
-            throw failure(ErrorMessages.RAG_E015, e, root);
+            throw new ServiceException(e, ErrorMessages.RAG_E015, root);
         }
         items.sort(Comparator.comparing(SourceItem::externalId));
         return items.stream();
@@ -70,7 +74,11 @@ public class FilesystemSource implements RagSource {
             return Optional.empty();
         }
         Path real = file.toRealPath();
-        if (!real.startsWith(root) || !Files.isRegularFile(real) || isHidden(real)) {
+        if (!real.startsWith(root)) {
+            log.warn("Skipping {} in source {}: it resolves outside the source root", file, name);
+            return Optional.empty();
+        }
+        if (!Files.isRegularFile(real) || isHidden(real)) {
             return Optional.empty();
         }
         Path relative = root.relativize(real);
@@ -79,7 +87,7 @@ public class FilesystemSource implements RagSource {
         }
         String contentType = Files.probeContentType(real);
         return Optional.of(new SourceItem(
-                relative.toString().replace('\\', '/'),
+                externalId(relative),
                 real.getFileName().toString(),
                 contentType != null ? contentType : "application/octet-stream",
                 Instant.ofEpochMilli(Files.getLastModifiedTime(real).toMillis()),
@@ -103,7 +111,7 @@ public class FilesystemSource implements RagSource {
         try {
             return root.toRealPath();
         } catch (IOException e) {
-            throw failure(ErrorMessages.RAG_E013, e, root);
+            throw new ServiceException(e, ErrorMessages.RAG_E013, root);
         }
     }
 
@@ -127,9 +135,9 @@ public class FilesystemSource implements RagSource {
         return result;
     }
 
-    private static ServiceException failure(ErrorMessages message, IOException cause, Object arg) {
-        ServiceException ex = new ServiceException(message, arg);
-        ex.initCause(cause);
-        return ex;
+    private static String externalId(Path relative) {
+        List<String> names = new ArrayList<>();
+        relative.forEach(p -> names.add(p.toString()));
+        return String.join("/", names);
     }
 }

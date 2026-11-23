@@ -7,4 +7,8 @@ public class ServiceException extends BaseException {
     public ServiceException(ErrorMessages errorMessage, Object... args) {
         super(errorMessage, args);
     }
+
+    public ServiceException(Throwable cause, ErrorMessages errorMessage, Object... args) {
+        super(cause, errorMessage, args);
+    }
 }

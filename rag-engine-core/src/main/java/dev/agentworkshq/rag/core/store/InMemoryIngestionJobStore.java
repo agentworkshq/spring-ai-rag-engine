@@ -26,9 +26,10 @@ public class InMemoryIngestionJobStore implements IngestionJobStore {
     }
 
     @Override
-    public IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped) {
+    public IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped,
+                                   String errorMessage) {
         return update(id, j -> new IngestionJobRecord(j.id(), j.sourceName(), IngestionStatus.DONE,
-                j.startedAt(), Instant.now(), added, updated, deleted, skipped, null));
+                j.startedAt(), Instant.now(), added, updated, deleted, skipped, errorMessage));
     }
 
     @Override

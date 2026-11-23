@@ -53,7 +53,7 @@ public record RagEngineProperties(
         }
     }
 
-    public record Ingestion(@DefaultValue("50") int batchSize) {
+    public record Ingestion(@DefaultValue("50") int batchSize, boolean allowEmptySource) {
 
         public Ingestion {
             if (batchSize <= 0) {

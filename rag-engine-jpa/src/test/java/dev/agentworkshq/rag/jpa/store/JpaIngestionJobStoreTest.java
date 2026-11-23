@@ -37,7 +37,7 @@ class JpaIngestionJobStoreTest {
     void finishStoresCounts() {
         IngestionJobRecord job = store.start("docs");
 
-        IngestionJobRecord done = store.finish(job.id(), 1, 2, 3, 4);
+        IngestionJobRecord done = store.finish(job.id(), 1, 2, 3, 4, null);
 
         assertThat(done.status()).isEqualTo(IngestionStatus.DONE);
         assertThat(done.added()).isEqualTo(1);

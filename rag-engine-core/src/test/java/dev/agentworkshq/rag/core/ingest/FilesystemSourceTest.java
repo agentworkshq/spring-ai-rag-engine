@@ -36,6 +36,14 @@ class FilesystemSourceTest {
     }
 
     @Test
+    void externalIdAlwaysUsesForwardSlashes() throws IOException {
+        Files.createDirectories(root.resolve("a/b"));
+        Files.writeString(root.resolve("a/b/c.md"), "c");
+
+        assertThat(scanIds(new FilesystemSource("s", root, List.of()))).containsExactly("a/b/c.md");
+    }
+
+    @Test
     void itemExposesMetadataAndContent() throws IOException {
         Files.writeString(root.resolve("a.md"), "hello");
 

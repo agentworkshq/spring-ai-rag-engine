@@ -7,4 +7,8 @@ public class ResourceNotFoundException extends BaseException {
     public ResourceNotFoundException(ErrorMessages errorMessage, Object... args) {
         super(errorMessage, args);
     }
+
+    public ResourceNotFoundException(Throwable cause, ErrorMessages errorMessage, Object... args) {
+        super(cause, errorMessage, args);
+    }
 }

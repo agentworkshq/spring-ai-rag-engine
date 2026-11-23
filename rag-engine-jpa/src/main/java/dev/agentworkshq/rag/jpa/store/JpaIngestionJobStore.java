@@ -34,8 +34,10 @@ public class JpaIngestionJobStore implements IngestionJobStore {
     }
 
     @Override
-    public IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped) {
+    public IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped,
+                                   String errorMessage) {
         IngestionJob job = load(id);
+        job.setErrorMessage(truncate(errorMessage));
         job.setStatus(IngestionStatus.DONE);
         job.setFinishedAt(Instant.now());
         job.setAddedCount(added);

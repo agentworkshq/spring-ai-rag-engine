@@ -39,3 +39,7 @@ If the host declares its own `@EnableJpaRepositories` or `@EntityScan`, it must 
 ## Notes
 
 405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
+
+`RecursiveChunker` counts characters. `FixedTokenChunker` counts tokens and ignores overlap. `chunkSize` therefore means different units for the two strategies.
+
+A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest.

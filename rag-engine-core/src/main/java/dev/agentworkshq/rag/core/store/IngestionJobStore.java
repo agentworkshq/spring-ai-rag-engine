@@ -7,7 +7,7 @@ public interface IngestionJobStore {
 
     IngestionJobRecord start(String sourceName);
 
-    IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped);
+    IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped, String errorMessage);
 
     IngestionJobRecord fail(Long id, String errorMessage);
 

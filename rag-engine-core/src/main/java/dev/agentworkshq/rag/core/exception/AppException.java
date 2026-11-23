@@ -7,4 +7,8 @@ public class AppException extends BaseException {
     public AppException(ErrorMessages errorMessage, Object... args) {
         super(errorMessage, args);
     }
+
+    public AppException(Throwable cause, ErrorMessages errorMessage, Object... args) {
+        super(cause, errorMessage, args);
+    }
 }

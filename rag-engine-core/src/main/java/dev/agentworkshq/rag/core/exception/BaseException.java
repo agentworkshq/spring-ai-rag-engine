@@ -7,7 +7,11 @@ public abstract class BaseException extends RuntimeException {
     private final ErrorMessages errorMessage;
 
     protected BaseException(ErrorMessages errorMessage, Object... args) {
-        super(args == null || args.length == 0 ? errorMessage.getMessage() : errorMessage.format(args));
+        this(null, errorMessage, args);
+    }
+
+    protected BaseException(Throwable cause, ErrorMessages errorMessage, Object... args) {
+        super(args == null || args.length == 0 ? errorMessage.getMessage() : errorMessage.format(args), cause);
         this.errorMessage = errorMessage;
     }
 

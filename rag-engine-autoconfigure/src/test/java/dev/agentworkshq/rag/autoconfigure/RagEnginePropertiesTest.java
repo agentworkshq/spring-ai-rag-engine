@@ -62,6 +62,6 @@ class RagEnginePropertiesTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RagEngineProperties.Limits(org.springframework.util.unit.DataSize.ofMegabytes(1), 0))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RagEngineProperties.Ingestion(0)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new RagEngineProperties.Ingestion(0, false)).isInstanceOf(IllegalArgumentException.class);
     }
 }

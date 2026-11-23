@@ -26,7 +26,7 @@ class InMemoryIngestionJobStoreTest {
     void finishStoresCounts() {
         IngestionJobRecord job = store.start("docs");
 
-        IngestionJobRecord done = store.finish(job.id(), 1, 2, 3, 4);
+        IngestionJobRecord done = store.finish(job.id(), 1, 2, 3, 4, null);
 
         assertThat(done.status()).isEqualTo(IngestionStatus.DONE);
         assertThat(done.added()).isEqualTo(1);
@@ -49,7 +49,7 @@ class InMemoryIngestionJobStoreTest {
 
     @Test
     void unknownJobThrowsNotFound() {
-        assertThatThrownBy(() -> store.finish(99L, 0, 0, 0, 0)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> store.finish(99L, 0, 0, 0, 0, null)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
