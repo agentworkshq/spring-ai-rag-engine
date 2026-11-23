@@ -9,7 +9,8 @@ public record RagWebProperties(
         @DefaultValue("/api/rag") String basePath,
         @DefaultValue("true") boolean requireAuthentication,
         @DefaultValue("RAG_ADMIN") String adminRole,
-        @DefaultValue Tenant tenant) {
+        @DefaultValue Tenant tenant,
+        @DefaultValue Upload upload) {
 
     public RagWebProperties {
         if (basePath == null || !basePath.startsWith("/") || basePath.endsWith("/")) {
@@ -20,6 +21,18 @@ public record RagWebProperties(
 
     public boolean adminRoleRequired() {
         return requireAuthentication && adminRole != null && !adminRole.isBlank();
+    }
+
+    public record Upload(
+            @DefaultValue("false") boolean enabled,
+            @DefaultValue("true") boolean requireAdmin,
+            @DefaultValue("1000") int maxDocumentsPerTenant) {
+
+        public Upload {
+            if (maxDocumentsPerTenant <= 0) {
+                throw new IllegalArgumentException("rag-engine.web.upload.max-documents-per-tenant must be positive");
+            }
+        }
     }
 
     public record Tenant(

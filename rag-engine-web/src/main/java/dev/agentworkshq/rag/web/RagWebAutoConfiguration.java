@@ -1,9 +1,11 @@
 package dev.agentworkshq.rag.web;
 
 import dev.agentworkshq.rag.core.answer.RagService;
+import dev.agentworkshq.rag.core.ingest.IngestionLimits;
 import dev.agentworkshq.rag.core.ingest.IngestionService;
 import dev.agentworkshq.rag.core.store.IngestionJobStore;
 import dev.agentworkshq.rag.web.controller.AskController;
+import dev.agentworkshq.rag.web.controller.DocumentController;
 import dev.agentworkshq.rag.web.controller.JobController;
 import dev.agentworkshq.rag.web.controller.RagControllers;
 import dev.agentworkshq.rag.web.controller.SourceController;
@@ -11,12 +13,14 @@ import dev.agentworkshq.rag.web.exception.RagExceptionHandler;
 import dev.agentworkshq.rag.web.security.RequestGuard;
 import dev.agentworkshq.rag.web.tenant.SingleTenantResolver;
 import dev.agentworkshq.rag.web.tenant.TenantResolver;
+import dev.agentworkshq.rag.web.upload.UploadService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -70,5 +74,22 @@ public class RagWebAutoConfiguration {
     @Bean
     JobController jobController(IngestionJobStore jobStore, RequestGuard guard) {
         return new JobController(jobStore, guard);
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "rag-engine.web.upload", name = "enabled", havingValue = "true")
+    static class UploadConfiguration {
+
+        @Bean
+        UploadService uploadService(IngestionService ingestionService, IngestionLimits limits,
+                                    RagWebProperties properties) {
+            return new UploadService(ingestionService, limits, properties.upload());
+        }
+
+        @Bean
+        DocumentController documentController(UploadService uploadService, TenantResolver tenantResolver,
+                                              RequestGuard guard) {
+            return new DocumentController(uploadService, tenantResolver, guard);
+        }
     }
 }

@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -20,6 +21,14 @@ public class DefaultDocumentLoader implements DocumentLoader {
 
     private static final Set<String> TEXT = Set.of("txt", "text", "md", "markdown");
     private static final Set<String> TIKA = Set.of("docx", "doc", "pptx", "ppt", "xlsx", "xls", "odt", "rtf", "html", "htm");
+
+    private static final Set<String> SUPPORTED = new HashSet<>();
+
+    static {
+        SUPPORTED.addAll(TEXT);
+        SUPPORTED.addAll(TIKA);
+        SUPPORTED.add("pdf");
+    }
 
     private static final String PDF_DEPENDENCY = "org.springframework.ai:spring-ai-pdf-document-reader";
     private static final String TIKA_DEPENDENCY = "org.springframework.ai:spring-ai-tika-document-reader";
@@ -129,6 +138,10 @@ public class DefaultDocumentLoader implements DocumentLoader {
 
     private static ServiceException readFailure(SourceItem item, IOException cause) {
         return new ServiceException(cause, ErrorMessages.RAG_E015, item.externalId());
+    }
+
+    public static boolean supports(String filename) {
+        return SUPPORTED.contains(extension(filename));
     }
 
     private static String extension(String filename) {

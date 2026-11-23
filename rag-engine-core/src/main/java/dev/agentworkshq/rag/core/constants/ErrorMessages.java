@@ -25,7 +25,13 @@ public enum ErrorMessages {
     RAG_E021(400, "Tenant id must not be blank"),
     RAG_E022(400, "Question must not be blank"),
     RAG_E023(400, "Question exceeds the maximum length of %d characters"),
-    RAG_E024(403, "Access denied");
+    RAG_E024(403, "Access denied"),
+    RAG_E025(413, "Uploaded file is too large"),
+    RAG_E026(400, "A multipart part named \"file\" is required"),
+    RAG_E027(400, "Invalid file name"),
+    RAG_E028(400, "File content does not match its type"),
+    RAG_E029(409, "Document limit of %d reached for this tenant"),
+    RAG_E030(413, "File exceeds the maximum size of %d bytes");
 
     private final int httpStatus;
     private final String message;

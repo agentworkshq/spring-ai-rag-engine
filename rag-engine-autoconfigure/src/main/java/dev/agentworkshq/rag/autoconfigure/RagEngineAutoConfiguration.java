@@ -8,6 +8,7 @@ import dev.agentworkshq.rag.core.ingest.ChunkingStrategy;
 import dev.agentworkshq.rag.core.ingest.DefaultDocumentLoader;
 import dev.agentworkshq.rag.core.ingest.DocumentLoader;
 import dev.agentworkshq.rag.core.ingest.FixedTokenChunker;
+import dev.agentworkshq.rag.core.ingest.IngestionLimits;
 import dev.agentworkshq.rag.core.ingest.FilesystemSource;
 import dev.agentworkshq.rag.core.ingest.IngestionPipeline;
 import dev.agentworkshq.rag.core.ingest.IngestionService;
@@ -57,8 +58,14 @@ public class RagEngineAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    DocumentLoader documentLoader(RagEngineProperties properties) {
-        return new DefaultDocumentLoader(properties.limits().maxFileSize().toBytes(), properties.limits().maxPages());
+    IngestionLimits ingestionLimits(RagEngineProperties properties) {
+        return new IngestionLimits(properties.limits().maxFileSize().toBytes(), properties.limits().maxPages());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentLoader documentLoader(IngestionLimits limits) {
+        return new DefaultDocumentLoader(limits.maxFileSize(), limits.maxPages());
     }
 
     @Bean

@@ -19,6 +19,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -72,6 +74,28 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
         log.warn("{} on {}: {} field error(s)", em.name(), path(request), fields.size());
         return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), fields, path(request)),
                 headers, HttpStatus.BAD_REQUEST);
+    }
+
+
+    @Override
+    protected ResponseEntity<Object> handleMissingServletRequestPart(MissingServletRequestPartException ex,
+                                                                     HttpHeaders headers, HttpStatusCode status,
+                                                                     WebRequest request) {
+        ErrorMessages em = ErrorMessages.RAG_E026;
+        log.warn("{} on {}", em.name(), path(request));
+        return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), path(request)), headers,
+                HttpStatus.valueOf(em.getHttpStatus()));
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex,
+                                                                          HttpHeaders headers,
+                                                                          HttpStatusCode status,
+                                                                          WebRequest request) {
+        ErrorMessages em = ErrorMessages.RAG_E025;
+        log.warn("{} on {}", em.name(), path(request));
+        return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), path(request)), headers,
+                HttpStatus.valueOf(em.getHttpStatus()));
     }
 
     @Override

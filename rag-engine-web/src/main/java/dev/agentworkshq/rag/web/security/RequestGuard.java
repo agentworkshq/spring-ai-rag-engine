@@ -19,6 +19,14 @@ public class RequestGuard {
         }
     }
 
+    public void requireUploadAccess(HttpServletRequest request) {
+        if (properties.upload().requireAdmin()) {
+            requireAdmin(request);
+        } else {
+            requireAuthenticated(request);
+        }
+    }
+
     public void requireAdmin(HttpServletRequest request) {
         requireAuthenticated(request);
         if (properties.adminRoleRequired() && !request.isUserInRole(properties.adminRole())) {

@@ -7,10 +7,15 @@ import java.util.Optional;
 
 public class SourceRegistry {
 
+    public static final String UPLOADS = "uploads";
+
     private final Map<String, RagSource> sources = new LinkedHashMap<>();
 
     public SourceRegistry(List<RagSource> sources) {
         for (RagSource source : sources) {
+            if (UPLOADS.equals(source.name())) {
+                throw new IllegalArgumentException("Source name \"" + UPLOADS + "\" is reserved for uploaded documents");
+            }
             if (this.sources.putIfAbsent(source.name(), source) != null) {
                 throw new IllegalArgumentException("Duplicate source name: " + source.name());
             }

@@ -68,6 +68,31 @@ Warning: with `rag-engine.web.require-authentication=false` all endpoints, inclu
 
 Jobs are not tenant scoped yet, which is why the job endpoints are admin only.
 
+## Upload endpoints
+
+Document upload is off by default. Enable it with `rag-engine.web.upload.enabled=true` on top of the web module. Uploaded documents use the reserved source name `uploads`, which a configured source cannot take, and the tenant comes from the `TenantResolver`.
+
+| Method and path (under `basePath`) | Description |
+|---|---|
+| `POST /documents` | `multipart/form-data` with a part named `file`. 201 with a `Location` header when added, 200 when updated or unchanged. |
+| `GET /documents?page=&size=` | The tenant's documents with page metadata. `size` defaults to 20, maximum 100. |
+| `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
+
+| Property | Default | Description |
+|---|---|---|
+| `rag-engine.web.upload.enabled` | `false` | Registers the upload endpoints. |
+| `rag-engine.web.upload.require-admin` | `true` | Needs the admin role when authentication is required. When false, any authenticated user may upload. |
+| `rag-engine.web.upload.max-documents-per-tenant` | `1000` | Replacing an existing document is always allowed. |
+
+The size cap is `rag-engine.limits.max-file-size`. The host application must also set `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`, because the container limits apply before this library sees the request.
+
+Safety rules:
+- Only the last path segment of the file name is kept. Empty names, control characters, names over 200 characters, names starting with a dot and names containing `..` are rejected. The name is the document id and is never used to build a file system path.
+- The extension must be one the document loader supports.
+- A `.pdf` must start with the `%PDF` magic bytes.
+- The upload is streamed into a randomly named temp file with a hard size cap, and the temp file is always deleted.
+- The document count per tenant is checked before ingesting.
+
 ## Notes
 
 405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
