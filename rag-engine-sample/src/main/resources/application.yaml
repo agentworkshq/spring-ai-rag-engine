@@ -6,3 +6,15 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+rag-engine:
+  web:
+    enabled: true
+    require-authentication: false
+  sources:
+    - name: docs
+      type: filesystem
+      path: ./docs-sample
+      include:
+        - "**/*.txt"
+        - "**/*.md"

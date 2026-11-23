@@ -2,7 +2,9 @@ package dev.agentworkshq.rag.core.ingest;
 
 import dev.agentworkshq.rag.core.constants.ErrorMessages;
 import dev.agentworkshq.rag.core.exception.BaseException;
+import dev.agentworkshq.rag.core.exception.ResourceNotFoundException;
 import dev.agentworkshq.rag.core.exception.ServiceException;
+import dev.agentworkshq.rag.core.ingest.DocumentIngestResult.Outcome;
 import dev.agentworkshq.rag.core.store.DocumentRegistry;
 import dev.agentworkshq.rag.core.store.IngestionJobStore;
 import dev.agentworkshq.rag.core.store.SourceDocumentRecord;
@@ -51,27 +53,62 @@ public class IngestionPipeline {
     }
 
     public IngestionResult ingest(RagSource source, String tenantId) {
+        VectorStore store = store();
+        return locked(source.name(), tenantId, () -> {
+            Long jobId = null;
+            try {
+                jobId = jobs.start(source.name()).id();
+                return run(source, tenantId, jobId, store);
+            } catch (RuntimeException e) {
+                log.error("Ingestion of source {} for tenant {} failed", source.name(), tenantId, e);
+                if (jobId != null) {
+                    jobs.fail(jobId, shortMessage(e));
+                }
+                if (e instanceof BaseException) {
+                    throw e;
+                }
+                throw new ServiceException(e, ErrorMessages.RAG_E006);
+            }
+        });
+    }
+
+    public DocumentIngestResult ingestDocument(String sourceName, String tenantId, SourceItem item) {
+        VectorStore store = store();
+        return locked(sourceName, tenantId, () -> process(store, sourceName, tenantId, item,
+                registry.find(sourceName, item.externalId(), tenantId).orElse(null)));
+    }
+
+    public void deleteDocument(String sourceName, String tenantId, String externalId) {
+        VectorStore store = store();
+        locked(sourceName, tenantId, () -> {
+            if (registry.find(sourceName, externalId, tenantId).isEmpty()) {
+                throw new ResourceNotFoundException(ErrorMessages.RAG_E002, externalId);
+            }
+            deleteChunks(store, documentId(sourceName, externalId), sourceName, tenantId);
+            registry.delete(sourceName, externalId, tenantId);
+            return null;
+        });
+    }
+
+    public List<SourceDocumentRecord> listDocuments(String sourceName, String tenantId) {
+        return registry.findBySource(sourceName, tenantId);
+    }
+
+    private VectorStore store() {
         VectorStore store = vectorStores.get();
         if (store == null) {
             throw new ServiceException(ErrorMessages.RAG_E019);
         }
-        String lockKey = source.name() + "\u0000" + tenantId;
+        return store;
+    }
+
+    private <T> T locked(String sourceName, String tenantId, Supplier<T> action) {
+        String lockKey = sourceName + "\u0000" + tenantId;
         if (!running.add(lockKey)) {
-            throw new ServiceException(ErrorMessages.RAG_E016, source.name(), tenantId);
+            throw new ServiceException(ErrorMessages.RAG_E016, sourceName, tenantId);
         }
-        Long jobId = null;
         try {
-            jobId = jobs.start(source.name()).id();
-            return run(source, tenantId, jobId, store);
-        } catch (RuntimeException e) {
-            log.error("Ingestion of source {} for tenant {} failed", source.name(), tenantId, e);
-            if (jobId != null) {
-                jobs.fail(jobId, shortMessage(e));
-            }
-            if (e instanceof BaseException) {
-                throw e;
-            }
-            throw new ServiceException(e, ErrorMessages.RAG_E006);
+            return action.get();
         } finally {
             running.remove(lockKey);
         }
@@ -98,7 +135,7 @@ public class IngestionPipeline {
         for (SourceItem item : items) {
             seen.add(item.externalId());
             try {
-                switch (process(store, sourceName, tenantId, item, known.get(item.externalId()))) {
+                switch (process(store, sourceName, tenantId, item, known.get(item.externalId())).outcome()) {
                     case ADDED -> added++;
                     case UPDATED -> updated++;
                     case SKIPPED -> skipped++;
@@ -128,15 +165,15 @@ public class IngestionPipeline {
         return new IngestionResult(added, updated, deleted, skipped, failed, jobId);
     }
 
-    private Outcome process(VectorStore store, String sourceName, String tenantId, SourceItem item,
-                            SourceDocumentRecord existing) {
+    private DocumentIngestResult process(VectorStore store, String sourceName, String tenantId, SourceItem item,
+                                         SourceDocumentRecord existing) {
         String fileHash = ContentHasher.fileHash(item);
         String effectiveHash = ContentHasher.effectiveHash(fileHash, chunkingSignature);
+        String documentId = documentId(sourceName, item.externalId());
         if (existing != null && existing.contentHash().equals(effectiveHash)) {
-            return Outcome.SKIPPED;
+            return new DocumentIngestResult(item.externalId(), documentId, Outcome.SKIPPED, existing.chunkCount());
         }
 
-        String documentId = documentId(sourceName, item.externalId());
         List<Document> chunks = enrich(chunker.split(loader.load(item)), sourceName, tenantId, documentId, fileHash);
         try {
             // always cleared first so a partly failed earlier run can never leave duplicates behind
@@ -155,7 +192,8 @@ public class IngestionPipeline {
             registry.delete(sourceName, item.externalId(), tenantId);
             throw e;
         }
-        return existing == null ? Outcome.ADDED : Outcome.UPDATED;
+        return new DocumentIngestResult(item.externalId(), documentId,
+                existing == null ? Outcome.ADDED : Outcome.UPDATED, chunks.size());
     }
 
     private List<Document> enrich(List<Document> chunks, String sourceName, String tenantId, String documentId,
@@ -196,9 +234,5 @@ public class IngestionPipeline {
             return e.getMessage();
         }
         return "Ingestion failed: " + e.getClass().getSimpleName();
-    }
-
-    private enum Outcome {
-        ADDED, UPDATED, SKIPPED
     }
 }

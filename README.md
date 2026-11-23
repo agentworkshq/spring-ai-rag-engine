@@ -36,6 +36,38 @@ Every change to this script must stay idempotent (`CREATE TABLE IF NOT EXISTS`, 
 
 If the host declares its own `@EnableJpaRepositories` or `@EntityScan`, it must also include the `dev.agentworkshq.rag.jpa` packages.
 
+## REST endpoints
+
+The web module is opt-in and only for servlet web applications. Enable it with `rag-engine.web.enabled=true`.
+
+| Method and path (under `basePath`) | Access | Description |
+|---|---|---|
+| `POST /ask` | authenticated | Ask a question. Body: `question`, optional `sourceNames` (max 20), optional `topK` (1 to 50). |
+| `POST /sources/{name}/ingest` | admin | Run ingestion for a configured source, synchronously. |
+| `GET /sources/{name}/jobs?limit=` | admin | Recent jobs for a source. `limit` defaults to 10, maximum 50. |
+| `GET /jobs/{id}` | admin | One job. |
+
+Source names may contain letters, digits, dash, underscore and dot, up to 100 characters.
+
+| Property | Default | Description |
+|---|---|---|
+| `rag-engine.web.enabled` | `false` | Registers the endpoints. |
+| `rag-engine.web.base-path` | `/api/rag` | Prefix for all endpoints. |
+| `rag-engine.web.require-authentication` | `true` | Rejects requests without a principal with 401. |
+| `rag-engine.web.admin-role` | `RAG_ADMIN` | Role needed for admin endpoints, 403 otherwise. Blank disables the role check. |
+| `rag-engine.web.tenant.mode` | `SINGLE` | `SINGLE` or `CUSTOM`. |
+| `rag-engine.web.tenant.default-tenant` | `default` | Tenant used in `SINGLE` mode. |
+
+The question length limit is `rag-engine.answer.max-question-length`.
+
+Tenants: the tenant id never comes from the request body, query string or headers. In `SINGLE` mode every request uses `tenant.default-tenant`. In `CUSTOM` mode the application must provide a `TenantResolver` bean, otherwise startup fails.
+
+Authentication: the library has no Spring Security dependency. It checks `HttpServletRequest.getUserPrincipal()` and `isUserInRole(adminRole)`, so any mechanism that fills those works. CORS and CSRF are the host application's job.
+
+Warning: with `rag-engine.web.require-authentication=false` all endpoints, including ingestion and job endpoints, are open to anyone who can reach the application. Use it for local demos only.
+
+Jobs are not tenant scoped yet, which is why the job endpoints are admin only.
+
 ## Notes
 
 405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
@@ -43,5 +75,7 @@ If the host declares its own `@EnableJpaRepositories` or `@EntityScan`, it must 
 `RecursiveChunker` counts characters. `FixedTokenChunker` counts tokens and ignores overlap. `chunkSize` therefore means different units for the two strategies.
 
 The ingestion lock works inside one JVM only. When running several instances, use an external scheduler or lock so only one instance ingests a given source and tenant at a time.
+
+If more than one `VectorStore` bean exists, mark one of them `@Primary`.
 
 A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest.

@@ -27,6 +27,7 @@ public class RagService {
 
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
     private static final Pattern REFERENCE = Pattern.compile("\\[(\\d+(?:\\s*,\\s*\\d+)*)]");
+    private static final Pattern CONTEXT_TAG = Pattern.compile("<\\s*(/?)\\s*context\\s*>", Pattern.CASE_INSENSITIVE);
     private static final int SNIPPET_LENGTH = 200;
 
     private final Supplier<VectorStore> vectorStores;
@@ -144,7 +145,7 @@ public class RagService {
 
     // chunk text must not be able to close the context block early
     private static String neutralize(String text) {
-        return text.replace(RagPrompts.CONTEXT_OPEN, "&lt;context&gt;").replace(RagPrompts.CONTEXT_CLOSE, "&lt;/context&gt;");
+        return CONTEXT_TAG.matcher(text).replaceAll("&lt;$1context&gt;");
     }
 
     private static Set<Integer> usedNumbers(String answer, int max) {
