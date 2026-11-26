@@ -19,4 +19,9 @@ public record RagContext(String tenantId, List<String> sourceNames, Integer topK
     public static RagContext of(String tenantId) {
         return new RagContext(tenantId, null, null);
     }
+
+    @Override
+    public String toString() {
+        return "RagContext[sourceNames=" + sourceNames.size() + ", topK=" + topK + "]";
+    }
 }

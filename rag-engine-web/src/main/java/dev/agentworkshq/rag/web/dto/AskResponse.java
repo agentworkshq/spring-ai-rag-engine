@@ -9,4 +9,10 @@ public record AskResponse(String answer, boolean answered, List<CitationResponse
         return new AskResponse(answer.text(), answer.answered(),
                 answer.citations().stream().map(CitationResponse::from).toList());
     }
+
+    @Override
+    public String toString() {
+        return "AskResponse[answerLength=" + (answer == null ? 0 : answer.length()) + ", answered=" + answered
+                + ", citations=" + (citations == null ? 0 : citations.size()) + "]";
+    }
 }

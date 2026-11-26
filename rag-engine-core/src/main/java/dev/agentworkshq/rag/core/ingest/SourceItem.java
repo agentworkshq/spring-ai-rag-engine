@@ -20,4 +20,9 @@ public record SourceItem(
     public InputStream open() throws IOException {
         return opener.open();
     }
+
+    @Override
+    public String toString() {
+        return "SourceItem[size=" + size + "]";
+    }
 }

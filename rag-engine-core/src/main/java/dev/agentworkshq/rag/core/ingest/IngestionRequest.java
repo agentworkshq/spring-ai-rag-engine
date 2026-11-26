@@ -9,4 +9,9 @@ public record IngestionRequest(String sourceName, String tenantId) {
             tenantId = DEFAULT_TENANT;
         }
     }
+
+    @Override
+    public String toString() {
+        return "IngestionRequest[]";
+    }
 }

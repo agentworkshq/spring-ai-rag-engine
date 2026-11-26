@@ -19,6 +19,11 @@ public record RagEngineProperties(
         sources = sources == null ? List.of() : List.copyOf(sources);
     }
 
+    @Override
+    public String toString() {
+        return "RagEngineProperties[sources=" + sources.size() + "]";
+    }
+
     public record Chunking(
             @DefaultValue("RECURSIVE") Strategy strategy,
             @DefaultValue("800") int chunkSize,
@@ -34,6 +39,11 @@ public record RagEngineProperties(
             if (overlap >= chunkSize) {
                 throw new IllegalArgumentException("rag-engine.chunking.overlap must be smaller than chunk-size");
             }
+        }
+
+        @Override
+        public String toString() {
+            return "Chunking[]";
         }
 
         public enum Strategy {
@@ -53,6 +63,11 @@ public record RagEngineProperties(
                 throw new IllegalArgumentException("rag-engine.limits.max-pages must be positive");
             }
         }
+
+        @Override
+        public String toString() {
+            return "Limits[]";
+        }
     }
 
     public record Ingestion(@DefaultValue("50") int batchSize, boolean allowEmptySource) {
@@ -61,6 +76,11 @@ public record RagEngineProperties(
             if (batchSize <= 0) {
                 throw new IllegalArgumentException("rag-engine.ingestion.batch-size must be positive");
             }
+        }
+
+        @Override
+        public String toString() {
+            return "Ingestion[]";
         }
     }
 
@@ -81,6 +101,11 @@ public record RagEngineProperties(
                 throw new IllegalArgumentException("rag-engine.retrieval.similarity-threshold must be between 0 and 1");
             }
         }
+
+        @Override
+        public String toString() {
+            return "Retrieval[]";
+        }
     }
 
     public record Answer(
@@ -100,6 +125,11 @@ public record RagEngineProperties(
                 throw new IllegalArgumentException("rag-engine.answer.max-question-length must be positive");
             }
         }
+
+        @Override
+        public String toString() {
+            return "Answer[noAnswerMessageLength=" + noAnswerMessage.length() + "]";
+        }
     }
 
     public record Source(
@@ -116,6 +146,11 @@ public record RagEngineProperties(
                 throw new IllegalArgumentException("rag-engine.sources[].path must not be blank");
             }
             include = include == null ? List.of() : List.copyOf(include);
+        }
+
+        @Override
+        public String toString() {
+            return "Source[include=" + include.size() + "]";
         }
 
         public enum Type {

@@ -1,7 +1,9 @@
 package dev.agentworkshq.rag.web.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import dev.agentworkshq.rag.core.constants.ErrorMessages;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 
 public record ApiResponse<T>(
@@ -28,5 +30,14 @@ public record ApiResponse<T>(
 
     public static <T> ApiResponse<T> error(String errorCode, String message, List<ApiError> errors, String path) {
         return new ApiResponse<>("error", message, errorCode, null, null, errors, path, Instant.now());
+    }
+
+    @Override
+    public String toString() {
+        // status and errorCode are plain strings, so only the values this library produces are printed
+        boolean knownStatus = "success".equals(status) || "error".equals(status);
+        boolean knownCode = Arrays.stream(ErrorMessages.values()).anyMatch(e -> e.name().equals(errorCode));
+        return "ApiResponse[status=" + (knownStatus ? status : null) + ", errorCode=" + (knownCode ? errorCode : null)
+                + ", hasData=" + (data != null) + ", errors=" + (errors == null ? 0 : errors.size()) + "]";
     }
 }

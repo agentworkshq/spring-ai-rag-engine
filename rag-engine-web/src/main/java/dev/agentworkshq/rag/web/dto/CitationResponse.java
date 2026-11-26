@@ -9,4 +9,10 @@ public record CitationResponse(int index, String documentId, String filename, In
         return new CitationResponse(citation.index(), citation.documentId(), citation.filename(), citation.page(),
                 citation.snippet(), citation.used());
     }
+
+    @Override
+    public String toString() {
+        return "CitationResponse[index=" + index + ", page=" + page + ", snippetLength="
+                + (snippet == null ? 0 : snippet.length()) + ", used=" + used + "]";
+    }
 }

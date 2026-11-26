@@ -201,6 +201,19 @@ Safety rules:
 - The upload is streamed into a randomly named temp file with a hard size cap, and the temp file is always deleted.
 - The document count per tenant is checked before ingesting.
 
+## Logging and privacy
+
+- `toString` of the library's records, properties included, never prints text such as questions, answers, snippets, file names, tenant ids, error messages or property values, only numbers, statuses, counts and lengths. Exceptions are different: they print their message. JSON responses are not affected.
+- The library's own log messages never contain questions, answers or snippets above debug level.
+- Its warning and error logs can contain file names, source names, tenant ids and request paths. They also contain exception messages and stack traces from the vector store, the models and the document readers, and those can repeat input text.
+
+The host application must still take care of:
+
+- access logs, because document URLs contain the file name
+- request and response body logging, because bodies carry questions, answers, snippets and uploaded files
+- reverse proxies, gateways and tracing tools that record URLs, headers or bodies
+- debug logging and observability settings of Spring and Spring AI, which can record requests and prompts
+
 ## Notes
 
 `POST /sources/{name}/ingest` is synchronous, so a large source can hit HTTP timeouts in clients and proxies. `/ask` has no rate limiting; adding it is the host application's responsibility.

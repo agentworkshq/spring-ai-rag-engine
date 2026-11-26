@@ -5,4 +5,9 @@ public record DocumentIngestResult(String externalId, String documentId, Outcome
     public enum Outcome {
         ADDED, UPDATED, SKIPPED
     }
+
+    @Override
+    public String toString() {
+        return "DocumentIngestResult[outcome=" + outcome + ", chunkCount=" + chunkCount + "]";
+    }
 }

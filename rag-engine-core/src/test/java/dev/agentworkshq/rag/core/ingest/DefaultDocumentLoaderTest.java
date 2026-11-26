@@ -91,6 +91,16 @@ class DefaultDocumentLoaderTest {
     }
 
     @Test
+    void namesThatAreNotValidPathsStillHaveAnExtension() {
+        for (String name : new String[] {"what?.txt", "a*b.md", "a<b>.txt", "a|b.txt", "a\"b.txt", "dir/a.txt"}) {
+            assertThat(DefaultDocumentLoader.supports(name)).as(name).isTrue();
+        }
+        assertThat(DefaultDocumentLoader.supports("what?.exe")).isFalse();
+        assertThat(DefaultDocumentLoader.supports("dir.txt/noextension")).isFalse();
+        assertThat(DefaultDocumentLoader.supports("dir.txt\\noextension")).isFalse();
+    }
+
+    @Test
     void unsupportedExtensionIsRejected() {
         assertThatThrownBy(() -> new DefaultDocumentLoader(1024, 10).load(item("a.exe", new byte[] {1})))
                 .satisfies(e -> assertThat(code(e)).isEqualTo(ErrorMessages.RAG_E012));

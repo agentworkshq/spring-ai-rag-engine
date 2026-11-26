@@ -244,6 +244,13 @@ class UploadEndpointsTest {
     }
 
     @Test
+    void aNameThatIsNotAValidWindowsPathIsAccepted() {
+        run(OPEN, (context, mvc) -> mvc.perform(multipart(DOCS).file(file("what?.txt", "content")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.externalId").value("what?.txt")));
+    }
+
+    @Test
     void unsupportedExtensionAndFakePdfAreRejected() {
         run(OPEN, (context, mvc) -> {
             mvc.perform(multipart(DOCS).file(file("tool.exe", "content")))

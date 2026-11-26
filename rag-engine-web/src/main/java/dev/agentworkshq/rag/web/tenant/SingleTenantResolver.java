@@ -14,4 +14,9 @@ public class SingleTenantResolver implements TenantResolver {
     public String resolve(HttpServletRequest request) {
         return tenantId;
     }
+
+    @Override
+    public String toString() {
+        return "SingleTenantResolver[]";
+    }
 }

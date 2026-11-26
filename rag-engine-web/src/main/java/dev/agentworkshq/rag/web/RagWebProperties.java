@@ -23,6 +23,11 @@ public record RagWebProperties(
         return requireAuthentication && adminRole != null && !adminRole.isBlank();
     }
 
+    @Override
+    public String toString() {
+        return "RagWebProperties[]";
+    }
+
     public record Upload(
             @DefaultValue("false") boolean enabled,
             @DefaultValue("true") boolean requireAdmin,
@@ -32,6 +37,11 @@ public record RagWebProperties(
             if (maxDocumentsPerTenant <= 0) {
                 throw new IllegalArgumentException("rag-engine.web.upload.max-documents-per-tenant must be positive");
             }
+        }
+
+        @Override
+        public String toString() {
+            return "Upload[]";
         }
     }
 
@@ -43,6 +53,11 @@ public record RagWebProperties(
             if (defaultTenant == null || defaultTenant.isBlank()) {
                 throw new IllegalArgumentException("rag-engine.web.tenant.default-tenant must not be blank");
             }
+        }
+
+        @Override
+        public String toString() {
+            return "Tenant[]";
         }
 
         public enum Mode {

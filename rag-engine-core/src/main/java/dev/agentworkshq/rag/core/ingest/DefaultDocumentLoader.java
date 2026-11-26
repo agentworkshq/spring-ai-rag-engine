@@ -5,7 +5,6 @@ import dev.agentworkshq.rag.core.exception.ServiceException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -145,7 +144,8 @@ public class DefaultDocumentLoader implements DocumentLoader {
     }
 
     private static String extension(String filename) {
-        String name = Path.of(filename).getFileName().toString();
+        // not parsed as a Path, which throws on Windows for names that are valid uploads
+        String name = filename.substring(Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\')) + 1);
         int dot = name.lastIndexOf('.');
         return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
