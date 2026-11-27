@@ -41,3 +41,4 @@ rag-engine:
       include:
         - "**/*.txt"
         - "**/*.md"
+        - "**/*.pdf"

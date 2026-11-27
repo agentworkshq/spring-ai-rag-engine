@@ -33,7 +33,8 @@ public enum ErrorMessages {
     RAG_E029(409, "Document limit of %d reached for this tenant"),
     RAG_E030(413, "File exceeds the maximum size of %d bytes"),
     RAG_E031(400, "Tenant id must not be blank, longer than %d characters or contain control characters"),
-    RAG_E032(400, "Source names must not be blank, longer than %d characters or contain control characters");
+    RAG_E032(400, "Source names must not be blank, longer than %d characters or contain control characters"),
+    RAG_E033(500, "A source could not be scanned completely");
 
     private final int httpStatus;
     private final String message;

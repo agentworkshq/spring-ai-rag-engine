@@ -166,7 +166,7 @@ Any other extension fails for that document. `rag-engine.limits.max-file-size` a
 
 A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest. Unchanged documents are skipped.
 
-Documents that are no longer in the source are removed. If a source returns nothing but has registered documents, the run fails and deletes nothing, unless `rag-engine.ingestion.allow-empty-source` is true.
+Documents that are no longer in the source are removed. A scan that fails removes nothing. The filesystem source fails the whole run when it cannot visit a file or list a directory, unless that file or directory is hidden. If a source returns nothing but has registered documents, the run fails and deletes nothing, unless `rag-engine.ingestion.allow-empty-source` is true.
 
 Only one ingestion operation can run for a source and tenant at a time. A second one fails with a conflict.
 
@@ -262,7 +262,7 @@ The `rag-engine.web.*` properties need the `rag-engine-web` module.
 
 | Property | Type | Default | Meaning |
 |---|---|---|---|
-| `rag-engine.enabled` | boolean | `true` | Bound but not read yet. Setting it to false disables nothing. |
+| `rag-engine.enabled` | boolean | `true` | When false, the core auto-configuration creates no beans: no ingestion, answering, sources or in-memory stores. The web and JPA modules are not switched off by it. Keep `rag-engine.web.enabled` false as well, because the endpoints need those beans and startup fails without them. The JPA module has no property and stays active while it is on the classpath. |
 | `rag-engine.chunking.strategy` | `FIXED` or `RECURSIVE` | `RECURSIVE` | How documents are split. |
 | `rag-engine.chunking.chunk-size` | int | `800` | Chunk size, in characters for `RECURSIVE` and tokens for `FIXED`. Must be positive. |
 | `rag-engine.chunking.overlap` | int | `100` | Characters repeated from the previous chunk, ignored by `FIXED`. Not negative and smaller than the chunk size, for both strategies. |
@@ -342,7 +342,7 @@ Ingestion
 
 - A failed re-ingest can leave a document without chunks until the next successful run, because the old chunks are deleted first.
 - With the in-memory registry and a persistent vector store, files deleted while the application was down stay searchable, and earlier uploads can no longer be listed or deleted. Use the JPA module together with a persistent store.
-- A file or directory that cannot be visited during a scan is treated as removed, and its chunks are deleted.
+- One file or directory that cannot be visited stops ingestion of its whole source until it is fixed or hidden.
 - Removing a source from the configuration does not delete its chunks.
 - Changing the embedding model is not detected.
 - Ingestion and its jobs run synchronously.
@@ -381,6 +381,26 @@ Build and test the library modules, without Docker:
 The sample needs Docker and Ollama as described under [Try the sample](#try-the-sample). Its Docker tests are skipped unless the `docker-tests` profile is active.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change.
+
+## Optional readers and their licenses
+
+The Tika and PDF readers are optional dependencies. They are not in the published jars and are not pulled in by this library. Add them to your application only if you need them.
+
+The Tika reader brings transitive libraries under other licenses than Apache 2.0. With Spring AI 2.0.1 their published POMs declare, among others:
+
+| Library | Declared license |
+|---|---|
+| `com.github.junrar:junrar` | UnRar License |
+| `com.github.albfernandez:juniversalchardet` | MPL 1.1, GPL 3.0, LGPL 3.0 |
+| `org.codelibs:jhighlight` | CDDL 1.0, LGPL 2.1 or later |
+| `org.bouncycastle:bcprov-jdk18on`, `bcpkix-jdk18on`, `bcutil-jdk18on`, `bcjmail-jdk18on` | Bouncy Castle Licence |
+| `org.glassfish.jaxb:jaxb-runtime`, `jaxb-core`, `txw2`, `jakarta.xml.bind:jakarta.xml.bind-api`, `jakarta.activation:jakarta.activation-api`, `org.eclipse.angus:angus-activation`, `com.sun.istack:istack-commons-runtime` | Eclipse Distribution License 1.0 |
+| `com.adobe.xmp:xmpcore`, `org.ow2.asm:asm`, `org.tallison:jmatio`, `com.github.virtuald:curvesapi`, `com.github.jai-imageio:jai-imageio-core` | BSD variants, the one of `jai-imageio-core` with a nuclear disclaimer |
+| `com.googlecode.plist:dd-plist`, `org.jsoup:jsoup`, `org.brotli:dec` | MIT |
+| `org.tukaani:xz` | 0BSD |
+| `org.jdom:jdom2` | Apache-like license of its own |
+
+If you add the Tika reader, review these and the rest of its dependency tree for your own use. This list is not legal advice.
 
 ## License
 

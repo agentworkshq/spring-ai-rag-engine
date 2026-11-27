@@ -10,7 +10,9 @@ import dev.agentworkshq.rag.core.store.InMemoryDocumentRegistry;
 import dev.agentworkshq.rag.core.store.InMemoryIngestionJobStore;
 import dev.agentworkshq.rag.core.store.IngestionJobRecord;
 import dev.agentworkshq.rag.core.store.IngestionStatus;
+import dev.agentworkshq.rag.core.store.SourceDocumentRecord;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -314,6 +317,53 @@ class IngestionPipelineTest {
         assertThat(job.status()).isEqualTo(IngestionStatus.FAILED);
         assertThat(job.errorMessage()).isEqualTo("Ingestion failed: IllegalStateException")
                 .doesNotContain("secret").doesNotContain("\n").doesNotContain(" at ");
+    }
+
+    @Test
+    void scanFailingAfterSomeItemsDeletesNothing() throws IOException {
+        assertFailedScanDeletesNothing(new IllegalStateException("scan broke"));
+    }
+
+    @Test
+    void uncheckedIoFailureDuringTheScanDeletesNothing() throws IOException {
+        assertFailedScanDeletesNothing(new UncheckedIOException(new IOException("listing broke")));
+    }
+
+    private void assertFailedScanDeletesNothing(RuntimeException failure) throws IOException {
+        write("a.txt", SENTENCES.repeat(5));
+        write("b.txt", SENTENCES.repeat(5));
+        pipeline().ingest(source, "t1");
+        List<String> chunksBefore = stored("t1").stream().map(Document::getId).sorted().toList();
+        List<SourceDocumentRecord> registryBefore = registry.findBySource("docs", "t1");
+        store.deleteFilters.clear();
+        store.batchSizes.clear();
+        SourceItem first = source.scan().findFirst().orElseThrow();
+        AtomicInteger produced = new AtomicInteger();
+        RagSource broken = new RagSource() {
+            @Override
+            public String name() {
+                return "docs";
+            }
+
+            @Override
+            public Stream<SourceItem> scan() {
+                return Stream.concat(Stream.of(first).peek(item -> produced.incrementAndGet()),
+                        Stream.generate(() -> {
+                            throw failure;
+                        }));
+            }
+        };
+
+        assertThatThrownBy(() -> pipeline().ingest(broken, "t1"))
+                .isInstanceOf(ServiceException.class)
+                .hasCause(failure);
+
+        assertThat(produced).hasValue(1);
+        assertThat(store.deleteFilters).isEmpty();
+        assertThat(store.batchSizes).isEmpty();
+        assertThat(stored("t1").stream().map(Document::getId).sorted().toList()).isEqualTo(chunksBefore);
+        assertThat(registry.findBySource("docs", "t1")).isEqualTo(registryBefore);
+        assertThat(jobs.findRecent("docs", 1).get(0).status()).isEqualTo(IngestionStatus.FAILED);
     }
 
     private static class RecordingStore implements VectorStore {

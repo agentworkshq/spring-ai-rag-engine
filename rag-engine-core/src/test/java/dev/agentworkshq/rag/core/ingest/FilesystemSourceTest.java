@@ -81,6 +81,61 @@ class FilesystemSourceTest {
     }
 
     @Test
+    void unreadableDirectoryFailsTheScan() throws IOException {
+        Files.writeString(root.resolve("a.md"), "a");
+        Path locked = Files.createDirectories(root.resolve("locked"));
+        Files.writeString(locked.resolve("b.md"), "b");
+        FilesystemSource source = new FilesystemSource("s", root, List.of());
+
+        try (UnreadableDirectory ignored = UnreadableDirectory.make(locked)) {
+            assertScanFails(source);
+        }
+
+        assertThat(scanIds(source)).containsExactly("a.md", "locked/b.md");
+    }
+
+    @Test
+    void unreadableHiddenDirectoryIsStillSkipped() throws IOException {
+        Files.writeString(root.resolve("a.md"), "a");
+        Path locked = Files.createDirectories(root.resolve(".locked"));
+        FilesystemSource source = new FilesystemSource("s", root, List.of());
+
+        try (UnreadableDirectory ignored = UnreadableDirectory.make(locked)) {
+            assertThat(scanIds(source)).containsExactly("a.md");
+        }
+    }
+
+    @Test
+    void rootRemovedAfterStartupFailsTheScan() throws IOException {
+        Path docs = Files.createDirectories(root.resolve("docs"));
+        FilesystemSource source = new FilesystemSource("s", docs, List.of());
+        Files.delete(docs);
+
+        assertScanFails(source);
+    }
+
+    @Test
+    void rootReplacedByAFileFailsTheScan() throws IOException {
+        Path docs = Files.createDirectories(root.resolve("docs"));
+        FilesystemSource source = new FilesystemSource("s", docs, List.of());
+        Files.delete(docs);
+        Files.writeString(docs, "not a directory");
+
+        assertScanFails(source);
+    }
+
+    private void assertScanFails(FilesystemSource source) {
+        assertThatThrownBy(source::scan)
+                .isInstanceOf(ServiceException.class)
+                .satisfies(e -> {
+                    ServiceException failure = (ServiceException) e;
+                    assertThat(failure.getErrorMessage()).isEqualTo(ErrorMessages.RAG_E033);
+                    assertThat(failure.getMessage()).doesNotContain(root.getFileName().toString());
+                    assertThat(failure.getCause()).isInstanceOf(IOException.class);
+                });
+    }
+
+    @Test
     void parentEscapePatternIsRejected() {
         assertThatThrownBy(() -> new FilesystemSource("s", root, List.of("../**/*.md")))
                 .isInstanceOf(ServiceException.class)

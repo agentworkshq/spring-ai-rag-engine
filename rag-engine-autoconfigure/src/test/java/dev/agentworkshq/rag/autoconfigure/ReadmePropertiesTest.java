@@ -16,12 +16,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.context.properties.bind.BindException;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 import org.springframework.util.unit.DataSize;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 class ReadmePropertiesTest {
 
@@ -30,6 +35,10 @@ class ReadmePropertiesTest {
     private static final Pattern NAME = Pattern.compile("`(rag-engine\\.[^`]*)`");
     private static final Pattern CODE = Pattern.compile("`([^`]*)`");
     private static final String SOURCE_PREFIX = "rag-engine.sources[].";
+    private static final Path ROOT_POM = Path.of("..", "pom.xml");
+    private static final Pattern XML_BLOCK = Pattern.compile("(?ms)^```xml$(.*?)^```$");
+    private static final Pattern DEPENDENCY = Pattern.compile("(?s)<dependency>.*?</dependency>");
+    private static final Pattern VERSION = Pattern.compile("<version>([^<]*)</version>");
 
     private static final List<String> tableLines = new ArrayList<>();
     private static final Map<String, String> documentedDefaults = new LinkedHashMap<>();
@@ -108,6 +117,63 @@ class ReadmePropertiesTest {
                 assertThat(value(name, Map.of())).as(name).isEqualTo(List.of());
             }
         });
+    }
+
+    @Test
+    void documentedVersionsAreTheProjectVersion() throws Exception {
+        assertDependencyVersions(README, projectVersion());
+    }
+
+    @Test
+    void anOutdatedVersionIsReportedWithItsLine(@TempDir Path directory) throws Exception {
+        List<String> lines = new ArrayList<>(Files.readAllLines(README));
+        String version = "<version>" + projectVersion() + "</version>";
+        int stale = IntStream.range(0, lines.size()).filter(i -> lines.get(i).contains(version))
+                .findFirst().orElseThrow();
+        lines.set(stale, lines.get(stale).replace(version, "<version>0.0.0-stale</version>"));
+        Path copy = Files.write(directory.resolve("README.md"), lines);
+
+        assertThatThrownBy(() -> assertDependencyVersions(copy, projectVersion()))
+                .isInstanceOf(AssertionError.class)
+                .hasMessageContaining("README line " + (stale + 1) + ":")
+                .hasMessageContaining("0.0.0-stale");
+    }
+
+    private static void assertDependencyVersions(Path readme, String expected) throws IOException {
+        String text = String.join("\n", Files.readAllLines(readme));
+        List<String> mismatches = new ArrayList<>();
+        int checked = 0;
+        Matcher block = XML_BLOCK.matcher(text);
+        while (block.find()) {
+            Matcher dependency = DEPENDENCY.matcher(text).region(block.start(1), block.end(1));
+            while (dependency.find()) {
+                if (!dependency.group().contains("<groupId>dev.agentworkshq</groupId>")) {
+                    continue;
+                }
+                Matcher version = VERSION.matcher(text).region(dependency.start(), dependency.end());
+                if (version.find()) {
+                    checked++;
+                    if (!version.group(1).strip().equals(expected)) {
+                        long line = text.substring(0, version.start()).chars().filter(c -> c == '\n').count() + 1;
+                        mismatches.add("README line " + line + ": version " + version.group(1).strip()
+                                + " does not match " + expected + " from the root pom.xml");
+                    }
+                }
+            }
+        }
+        assertThat(checked).as("README has no dev.agentworkshq dependency with a version").isPositive();
+        assertThat(mismatches).withFailMessage(() -> String.join("\n", mismatches)).isEmpty();
+    }
+
+    private static String projectVersion() throws Exception {
+        Element project = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+                .parse(ROOT_POM.toFile()).getDocumentElement();
+        for (Node child = project.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child.getNodeName().equals("version")) {
+                return child.getTextContent().strip();
+            }
+        }
+        throw new AssertionError("The root pom.xml has no project version");
     }
 
     private static Map<String, Class<?>> properties() {

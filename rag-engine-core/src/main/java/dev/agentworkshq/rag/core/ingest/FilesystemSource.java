@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.SimpleFileVisitor;
@@ -53,17 +54,25 @@ public class FilesystemSource implements RagSource {
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (file.equals(root)) {
+                        throw new NotDirectoryException(file.toString());
+                    }
                     toItem(file).ifPresent(items::add);
                     return FileVisitResult.CONTINUE;
                 }
 
                 @Override
-                public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                    return FileVisitResult.CONTINUE;
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    // a hidden directory that cannot be listed ends up here instead of preVisitDirectory
+                    if (!file.equals(root) && isHidden(file)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    // a partial scan would make the missing documents look deleted
+                    throw exc;
                 }
             });
         } catch (IOException e) {
-            throw new ServiceException(e, ErrorMessages.RAG_E015, root);
+            throw new ServiceException(e, ErrorMessages.RAG_E033);
         }
         items.sort(Comparator.comparing(SourceItem::externalId));
         return items.stream();
@@ -79,11 +88,13 @@ public class FilesystemSource implements RagSource {
             log.debug("Skipping {} in source {}", file, name);
             return Optional.empty();
         }
-        if (!Files.isRegularFile(real) || isHidden(real)) {
+        Path relative = root.relativize(real);
+        if (isHidden(real) || !matches(relative)) {
             return Optional.empty();
         }
-        Path relative = root.relativize(real);
-        if (!matches(relative)) {
+        // Files.isRegularFile would answer false on a read error and so hide it
+        BasicFileAttributes attributes = Files.readAttributes(real, BasicFileAttributes.class);
+        if (!attributes.isRegularFile()) {
             return Optional.empty();
         }
         String contentType = Files.probeContentType(real);
@@ -91,8 +102,8 @@ public class FilesystemSource implements RagSource {
                 externalId(relative),
                 real.getFileName().toString(),
                 contentType != null ? contentType : "application/octet-stream",
-                Instant.ofEpochMilli(Files.getLastModifiedTime(real).toMillis()),
-                Files.size(real),
+                Instant.ofEpochMilli(attributes.lastModifiedTime().toMillis()),
+                attributes.size(),
                 () -> Files.newInputStream(real)));
     }
 
