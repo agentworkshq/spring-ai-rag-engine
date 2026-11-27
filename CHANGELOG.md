@@ -10,10 +10,11 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Changed
 
-- A failure no longer removes a registry entry or old chunks. Entries are marked dirty before the vector store is changed and are ingested or removed again by a later run.
+- A failure no longer removes a registry entry, and surplus chunks of an updated document are deleted only after the new ones are stored. Entries are marked dirty before the vector store is changed and are ingested or removed again by a later run.
+- The JPA document registry and job store commit every write in its own transaction, so a rollback of the host application no longer undoes it.
 - Each document is read once, so the hash and the chunks come from the same bytes.
 - A non-empty file that yields no text fails instead of replacing the existing chunks.
-- A result that cannot be written to the job store is still returned. A job no longer stays `RUNNING` after an error.
+- A result that cannot be written to the job store is still returned. A run that ends with an error marks its job failed, as long as the job store can be written.
 - `rag-engine.enabled=false` also switches off the web and JPA modules.
 - The quick start covers requirements, security, CSRF and triggering ingestion.
 - The sample accepts uploads up to 20MB and uses the current Ollama property names.
@@ -31,7 +32,7 @@ All notable changes to this project are documented in this file. The format foll
 - Per-document ingest, delete and list operations.
 - Ingestion jobs and a document registry, kept in memory by default.
 - Retrieval and answering with citations, a no-answer message, optional query rewriting and a pluggable reranker.
-- Tenant filtering on vector store searches and deletes.
+- Tenant filtering on vector store searches and filter based deletes, and tenant specific chunk ids.
 - Optional REST endpoints for ask, ingestion, jobs and documents (upload, list, get, delete), with authentication and admin role checks.
 - JPA persistence module for the document registry and jobs, with a Flyway schema script.
 - Spring Boot auto-configuration and a starter.

@@ -11,9 +11,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-@Transactional
+// writes commit on their own, so a job stays recorded when a host transaction rolls back
 public class JpaIngestionJobStore implements IngestionJobStore {
 
     private static final int MAX_ERROR_LENGTH = 500;
@@ -25,6 +26,7 @@ public class JpaIngestionJobStore implements IngestionJobStore {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public IngestionJobRecord start(String sourceName) {
         IngestionJob job = new IngestionJob();
         job.setSourceName(sourceName);
@@ -34,6 +36,7 @@ public class JpaIngestionJobStore implements IngestionJobStore {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public IngestionJobRecord finish(Long id, int added, int updated, int deleted, int skipped,
                                    String errorMessage) {
         IngestionJob job = load(id);
@@ -48,6 +51,7 @@ public class JpaIngestionJobStore implements IngestionJobStore {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public IngestionJobRecord fail(Long id, String errorMessage) {
         IngestionJob job = load(id);
         job.setStatus(IngestionStatus.FAILED);

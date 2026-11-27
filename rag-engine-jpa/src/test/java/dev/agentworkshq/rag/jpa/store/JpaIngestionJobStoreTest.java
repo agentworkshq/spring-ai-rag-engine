@@ -5,18 +5,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.agentworkshq.rag.core.store.IngestionJobRecord;
 import dev.agentworkshq.rag.core.store.IngestionJobStore;
 import dev.agentworkshq.rag.core.store.IngestionStatus;
+import dev.agentworkshq.rag.jpa.repository.IngestionJobRepository;
 import dev.agentworkshq.rag.jpa.testapp.TestApplication;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(classes = TestApplication.class)
-@Transactional
 class JpaIngestionJobStoreTest {
 
     @Autowired
     private IngestionJobStore store;
+
+    @Autowired
+    private IngestionJobRepository repository;
+
+    @AfterEach
+    void cleanUp() {
+        repository.deleteAll();
+    }
 
     @Test
     void jpaStoreReplacesInMemoryDefault() {
@@ -45,7 +53,8 @@ class JpaIngestionJobStoreTest {
         assertThat(done.deleted()).isEqualTo(3);
         assertThat(done.skipped()).isEqualTo(4);
         assertThat(done.finishedAt()).isNotNull();
-        assertThat(store.findById(job.id())).contains(done);
+        assertThat(store.findById(job.id())).hasValueSatisfying(found -> assertThat(found).usingRecursiveComparison()
+                .ignoringFields("startedAt", "finishedAt").isEqualTo(done));
     }
 
     @Test

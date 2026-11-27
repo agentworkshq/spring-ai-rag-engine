@@ -7,14 +7,12 @@ import dev.agentworkshq.rag.core.store.SourceDocumentRecord;
 import dev.agentworkshq.rag.jpa.entity.SourceDocument;
 import dev.agentworkshq.rag.jpa.repository.SourceDocumentRepository;
 import dev.agentworkshq.rag.jpa.testapp.TestApplication;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(classes = TestApplication.class)
-@Transactional
 class JpaDocumentRegistryTest {
 
     @Autowired
@@ -22,6 +20,11 @@ class JpaDocumentRegistryTest {
 
     @Autowired
     private SourceDocumentRepository repository;
+
+    @AfterEach
+    void cleanUp() {
+        repository.deleteAll();
+    }
 
     @Test
     void jpaRegistryReplacesInMemoryDefault() {
@@ -51,26 +54,21 @@ class JpaDocumentRegistryTest {
     }
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void savingAcrossTransactionsUpdatesOnlyTheRowWithTheSameKey() {
-        try {
-            registry.save(new SourceDocumentRecord("docs", "a.md", "default", "h1", 3));
-            registry.save(new SourceDocumentRecord("docs", "a.md", "other", "h1", 3));
-            registry.save(new SourceDocumentRecord("web", "a.md", "default", "h1", 3));
-            Long id = row("docs", "default").getId();
+        registry.save(new SourceDocumentRecord("docs", "a.md", "default", "h1", 3));
+        registry.save(new SourceDocumentRecord("docs", "a.md", "other", "h1", 3));
+        registry.save(new SourceDocumentRecord("web", "a.md", "default", "h1", 3));
+        Long id = row("docs", "default").getId();
 
-            registry.save(new SourceDocumentRecord("docs", "a.md", "default",
-                    SourceDocumentRecord.DIRTY_HASH, 7));
+        registry.save(new SourceDocumentRecord("docs", "a.md", "default",
+                SourceDocumentRecord.DIRTY_HASH, 7));
 
-            assertThat(repository.count()).isEqualTo(3);
-            assertThat(row("docs", "default").getId()).isEqualTo(id);
-            assertThat(registry.find("docs", "a.md", "default")).contains(new SourceDocumentRecord("docs", "a.md",
-                    "default", SourceDocumentRecord.DIRTY_HASH, 7));
-            assertThat(row("docs", "other").getContentHash()).isEqualTo("h1");
-            assertThat(row("web", "default").getContentHash()).isEqualTo("h1");
-        } finally {
-            repository.deleteAll();
-        }
+        assertThat(repository.count()).isEqualTo(3);
+        assertThat(row("docs", "default").getId()).isEqualTo(id);
+        assertThat(registry.find("docs", "a.md", "default")).contains(new SourceDocumentRecord("docs", "a.md",
+                "default", SourceDocumentRecord.DIRTY_HASH, 7));
+        assertThat(row("docs", "other").getContentHash()).isEqualTo("h1");
+        assertThat(row("web", "default").getContentHash()).isEqualTo("h1");
     }
 
     private SourceDocument row(String sourceName, String tenantId) {
@@ -81,13 +79,11 @@ class JpaDocumentRegistryTest {
     void deleteRemovesRowAndSameDocumentCanBeSavedAgain() {
         registry.save(new SourceDocumentRecord("docs", "a.md", "default", "h1", 3));
         registry.delete("docs", "a.md", "default");
-        repository.flush();
 
         assertThat(registry.find("docs", "a.md", "default")).isEmpty();
         assertThat(repository.count()).isZero();
 
         registry.save(new SourceDocumentRecord("docs", "a.md", "default", "h3", 2));
-        repository.flush();
 
         assertThat(registry.find("docs", "a.md", "default")).isPresent();
     }

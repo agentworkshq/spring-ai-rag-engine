@@ -197,7 +197,7 @@ Any other extension fails for that document. `rag-engine.limits.max-file-size` a
 
 ### Change detection
 
-A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest. Unchanged documents are skipped.
+A document is re-ingested when its content, the chunking strategy or `chunkSize` changes, and with `RECURSIVE` also when `overlap` changes. Changing the embedding model, or the code of your own `ChunkingStrategy` or `DocumentLoader`, is not detected and needs a manual full re-ingest. Unchanged documents are skipped.
 
 Each file is read once, and the hash and the chunks come from those bytes. A file that is not empty but yields no text fails and replaces nothing. An empty text file gives no chunks.
 
@@ -245,7 +245,7 @@ Source names in the path may contain letters, digits, dash, underscore and dot, 
 
 `POST /sources/{name}/ingest` is synchronous, so a large source can hit HTTP timeouts in clients and proxies.
 
-Tenants: in `SINGLE` mode every request uses `rag-engine.web.tenant.default-tenant`. In `CUSTOM` mode the application must provide a `TenantResolver` bean, otherwise startup fails.
+Tenants: in `SINGLE` mode every request uses `rag-engine.web.tenant.default-tenant`. In `CUSTOM` mode the application must provide a `TenantResolver` bean, otherwise startup fails. A `TenantResolver` bean of your application is used in either mode.
 
 Authentication: the library has no Spring Security dependency. It checks `HttpServletRequest.getUserPrincipal()` and `isUserInRole(adminRole)`, so any mechanism that fills those works. CORS and CSRF are the host application's job.
 
@@ -266,7 +266,7 @@ Document upload is off by default. Enable it with `rag-engine.web.upload.enabled
 | `GET /documents/{externalId}` | One document of the tenant. 404 when unknown. |
 | `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
 
-A document whose upload or delete failed stays in the list and counts against the quota. It looks like any other document, and its `chunkCount` is the most chunks that can exist. Delete it or upload it again. Uploading it again answers 200. A file without extractable text answers 422, and a new one then appears in the list with no chunks.
+A document whose delete failed, or whose upload failed while the vector store was being changed, stays in the list and counts against the quota. It looks like any other document, and its `chunkCount` is the most chunks that can exist. Delete it or upload it again. Uploading it again answers 200. A file without extractable text answers 422, and a new one then appears in the list with no chunks. An upload that is rejected or cannot be parsed changes nothing.
 
 The size cap is `rag-engine.limits.max-file-size`. The host application must also set `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`, because the container limits apply before this library sees the request.
 
@@ -344,7 +344,7 @@ The `rag-engine.web.*` properties need the `rag-engine-web` module.
 
 ### Tenant isolation
 
-- Every vector store search and delete by this library includes a tenant filter built with `FilterExpressionBuilder`.
+- Every vector store search and filter based delete by this library includes a tenant filter built with `FilterExpressionBuilder`. Surplus chunks of a document are deleted by chunk id, and the ids are derived from the tenant id.
 - In the REST endpoints the tenant comes only from the `TenantResolver`, never from the request body, query string or headers read by the library. A blank tenant id, one over 100 characters or one with control characters is refused.
 - Code that calls `RagService` or `IngestionService` directly passes the tenant id itself and is responsible for it.
 
@@ -392,7 +392,8 @@ Ingestion
 - A successful but incomplete listing, for example with an unmounted subfolder or a retargeted symlink, still removes the missing documents. `max-delete-ratio` exists to limit this, and it only stops large removals.
 - A PDF without extractable text, or any other non-empty file that yields no text, fails on every run. With the `FIXED` strategy this includes files of a few characters.
 - With the in-memory registry and a persistent vector store, files deleted while the application was down stay searchable, a document that became shorter in that time keeps its surplus chunks, and earlier uploads can no longer be listed or deleted. Use the JPA module together with a persistent store.
-- If you call ingestion inside your own transaction, a rollback also undoes the dirty mark in the JPA registry.
+- Do not call ingestion, uploads or deletes from inside a long running transaction of your own. With the JPA module every registry and job write commits on its own, while your transaction stays open and keeps its connection and any locks it holds. Such a call needs a second connection, so the connection pool needs at least two, and more when several of these calls run at once.
+- Reads of the JPA registry and job store join your transaction and can return values from before a write made during it. Ingesting the same source or document twice in one transaction can then skip a changed document or leave surplus chunks behind.
 - The JPA module has no switch of its own beyond `rag-engine.enabled`.
 - One file or directory that cannot be visited stops ingestion of its whole source until it is fixed or hidden.
 - Removing a source from the configuration does not delete its chunks.
@@ -414,7 +415,7 @@ Documents and uploads
 Access and retrieval
 
 - The job endpoints are not tenant scoped.
-- The tenant filter was checked against `SimpleVectorStore` and the pgvector filter converter only.
+- The automated tests check the tenant filter against `SimpleVectorStore` only.
 
 ## Roadmap
 

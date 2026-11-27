@@ -6,9 +6,10 @@ import dev.agentworkshq.rag.jpa.entity.SourceDocument;
 import dev.agentworkshq.rag.jpa.repository.SourceDocumentRepository;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-@Transactional
+// writes commit on their own, because a host rollback does not undo the vector store changes they describe
 public class JpaDocumentRegistry implements DocumentRegistry {
 
     private final SourceDocumentRepository repository;
@@ -33,6 +34,7 @@ public class JpaDocumentRegistry implements DocumentRegistry {
     }
 
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(SourceDocumentRecord record) {
         SourceDocument entity = repository
                 .findBySourceNameAndExternalIdAndTenantId(record.sourceName(), record.externalId(), record.tenantId())
@@ -47,6 +49,7 @@ public class JpaDocumentRegistry implements DocumentRegistry {
 
     // Hard delete: a soft-deleted row would keep holding the unique key and block re-ingesting the document.
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void delete(String sourceName, String externalId, String tenantId) {
         repository.findBySourceNameAndExternalIdAndTenantId(sourceName, externalId, tenantId)
                 .ifPresent(repository::delete);
