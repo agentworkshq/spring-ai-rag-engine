@@ -1,10 +1,21 @@
 # spring-ai-rag-engine
 
+## What it is
+
 A retrieval augmented generation library for Spring Boot, built on Spring AI.
 It ingests documents from configured sources and uploads into your vector store, and answers questions with cited sources.
 It adds change detection, tenant scoping and optional REST endpoints, so you do not have to write the plumbing yourself.
 
-## Use it in your app
+What it does not do:
+
+- It does not ship a chat model, an embedding model or a vector store. You bring your own through Spring AI.
+- It does not authenticate users, limit request rates or configure CORS and CSRF.
+- It does not schedule ingestion or run it in the background. You trigger it.
+- It has no user interface.
+
+## Quick start
+
+### Use it in your app
 
 The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` in this repository to put them in your local Maven repository.
 
@@ -21,7 +32,9 @@ The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` in 
 </dependency>
 ```
 
-You also need a Spring AI chat model, an embedding model and a vector store on the classpath. Minimal configuration:
+You also need a Spring AI chat model, an embedding model and a vector store on the classpath. If more than one `VectorStore` bean exists, mark one of them `@Primary`.
+
+Minimal configuration:
 
 ```yaml
 rag-engine:
@@ -33,9 +46,9 @@ rag-engine:
       path: ./docs
 ```
 
-The endpoints then live under `/api/rag` and require an authenticated user. See the sections below for all properties.
+The endpoints then live under `/api/rag` and require an authenticated user. See [Configuration reference](#configuration-reference) for all properties.
 
-## Try the sample
+### Try the sample
 
 `rag-engine-sample` runs the library against PostgreSQL with pgvector and a local Ollama model. Authentication is switched off in the sample, so use it for local demos only.
 
@@ -117,9 +130,109 @@ curl -X DELETE http://localhost:8080/api/rag/documents/warranty-and-support.txt
 Invoke-RestMethod -Method Delete -Uri http://localhost:8080/api/rag/documents/warranty-and-support.txt
 ```
 
-## Persistence (optional)
+## Concepts
 
-By default ingestion state is kept in memory. Add `rag-engine-jpa` to store it in your database:
+- Source: a named origin of documents. The library ships a filesystem source. Any `RagSource` bean is registered as well. Names must be unique, and `uploads` is reserved for uploaded documents.
+- Document: one item of a source, identified by its source name and external id. For the filesystem source the external id is the path relative to the source root.
+- Chunk: a piece of a document stored in the vector store, with metadata for tenant, source, document, file name, chunk index, content hash and, for PDF, page.
+- Tenant: every chunk and registry entry belongs to one tenant.
+- Registry and jobs: the registry records which documents are ingested and with which hash. A job records one ingestion run of a source. Both are kept in memory unless [Persistence](#persistence) is added.
+
+## Ingestion
+
+`IngestionService.ingest(sourceName, tenantId)` scans a source and brings the vector store in line with it. Documents are added, updated, skipped or deleted, and the result counts each of these plus failures. One failed document does not stop the run.
+
+`IngestionService` also works on single documents: `ingestDocument`, `deleteDocument` and `listDocuments`.
+
+### Filesystem source
+
+The root directory must exist at startup. Hidden files and directories are skipped, as are files that resolve outside the root. `include` takes glob patterns matched against the relative path, must not contain `..`, and matches every file when empty.
+
+### Document loaders and limits
+
+| Extensions | Reader | Dependency to add |
+|---|---|---|
+| `txt`, `text`, `md`, `markdown` | Read as UTF-8 text | none |
+| `pdf` | One document per page | `org.springframework.ai:spring-ai-pdf-document-reader` |
+| `docx`, `doc`, `pptx`, `ppt`, `xlsx`, `xls`, `odt`, `rtf`, `html`, `htm` | Apache Tika | `org.springframework.ai:spring-ai-tika-document-reader` |
+
+Any other extension fails for that document. `rag-engine.limits.max-file-size` applies to every file and `rag-engine.limits.max-pages` to PDF files.
+
+### Chunking
+
+`RecursiveChunker` counts characters. `FixedTokenChunker` counts tokens and ignores overlap. `chunkSize` therefore means different units for the two strategies.
+
+### Change detection
+
+A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest. Unchanged documents are skipped.
+
+Documents that are no longer in the source are removed. If a source returns nothing but has registered documents, the run fails and deletes nothing, unless `rag-engine.ingestion.allow-empty-source` is true.
+
+Only one ingestion operation can run for a source and tenant at a time. A second one fails with a conflict.
+
+## Retrieval and answers
+
+`RagService.ask(question, context)` takes a `RagContext` with the tenant id, optional source names and an optional `topK`.
+
+1. The question is checked against `rag-engine.answer.max-question-length`.
+2. With `rag-engine.retrieval.query-rewrite`, the chat model first rewrites the question into a search query.
+3. The vector store is searched with a tenant filter, a source filter when source names are given, and the similarity threshold. The requested `topK` is capped at `rag-engine.retrieval.max-top-k`.
+4. A `Reranker` bean can reorder the results. The default keeps the order.
+5. Numbered chunks are added to the prompt up to `rag-engine.answer.max-context-chars`.
+6. The model is told to answer from those chunks only and to cite them as `[1]`, `[2]`.
+
+The answer carries the text, an `answered` flag and one citation per chunk sent to the model: number, document id, file name, page, a snippet of up to 200 characters and `used`, which says whether the answer refers to that number. With `rag-engine.answer.cite-sources=false` the list is empty.
+
+When nothing is retrieved, the model is not asked to answer and the reply is `rag-engine.answer.no-answer-message` with `answered=false`. The same flag is false when the model replies with exactly that message.
+
+## REST endpoints
+
+The web module is opt-in and only for servlet web applications. Enable it with `rag-engine.web.enabled=true`.
+
+| Method and path (under `basePath`) | Access | Description |
+|---|---|---|
+| `POST /ask` | authenticated | Ask a question. Body: `question`, optional `sourceNames` (max 20), optional `topK` (1 to 50). |
+| `POST /sources/{name}/ingest` | admin | Run ingestion for a configured source, synchronously. |
+| `GET /sources/{name}/jobs?limit=` | admin | Recent jobs for a source. `limit` defaults to 10, maximum 50. |
+| `GET /jobs/{id}` | admin | One job. |
+
+Source names in the path may contain letters, digits, dash, underscore and dot, up to 100 characters.
+
+`POST /sources/{name}/ingest` is synchronous, so a large source can hit HTTP timeouts in clients and proxies.
+
+Tenants: in `SINGLE` mode every request uses `rag-engine.web.tenant.default-tenant`. In `CUSTOM` mode the application must provide a `TenantResolver` bean, otherwise startup fails.
+
+Authentication: the library has no Spring Security dependency. It checks `HttpServletRequest.getUserPrincipal()` and `isUserInRole(adminRole)`, so any mechanism that fills those works. CORS and CSRF are the host application's job.
+
+Warning: with `rag-engine.web.require-authentication=false` all endpoints, including ingestion and job endpoints, are open to anyone who can reach the application. Use it for local demos only.
+
+Jobs are not tenant scoped yet, which is why the job endpoints are admin only.
+
+405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
+
+## Upload endpoints
+
+Document upload is off by default. Enable it with `rag-engine.web.upload.enabled=true` on top of the web module. Uploaded documents use the reserved source name `uploads`, which a configured source cannot take. The endpoints need the admin role unless `rag-engine.web.upload.require-admin` is false.
+
+| Method and path (under `basePath`) | Description |
+|---|---|
+| `POST /documents` | `multipart/form-data` with a part named `file`. 201 with a `Location` header when added, 200 when updated or unchanged. |
+| `GET /documents?page=&size=` | The tenant's documents with page metadata. `size` defaults to 20, maximum 100. |
+| `GET /documents/{externalId}` | One document of the tenant. 404 when unknown. |
+| `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
+
+The size cap is `rag-engine.limits.max-file-size`. The host application must also set `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`, because the container limits apply before this library sees the request.
+
+Safety rules:
+- Only the last path segment of the file name is kept. Empty names, control characters, names over 200 characters, names starting with a dot and names containing `..` are rejected. The name is the document id and is never used to build a file system path.
+- The extension must be one the document loader supports.
+- A `.pdf` must start with the `%PDF` magic bytes.
+- The upload is streamed into a randomly named temp file with a hard size cap, and the temp file is always deleted.
+- The document count per tenant is checked before ingesting. Replacing an existing document is always allowed.
+
+## Persistence
+
+Persistence is optional. By default ingestion state is kept in memory. Add `rag-engine-jpa` to store it in your database:
 
 ```xml
 <dependency>
@@ -143,69 +256,76 @@ Every change to this script must stay idempotent (`CREATE TABLE IF NOT EXISTS`, 
 
 If the host declares its own `@EnableJpaRepositories` or `@EntityScan`, it must also include the `dev.agentworkshq.rag.jpa` packages.
 
-## REST endpoints
+## Configuration reference
 
-The web module is opt-in and only for servlet web applications. Enable it with `rag-engine.web.enabled=true`.
+The `rag-engine.web.*` properties need the `rag-engine-web` module.
 
-| Method and path (under `basePath`) | Access | Description |
-|---|---|---|
-| `POST /ask` | authenticated | Ask a question. Body: `question`, optional `sourceNames` (max 20), optional `topK` (1 to 50). |
-| `POST /sources/{name}/ingest` | admin | Run ingestion for a configured source, synchronously. |
-| `GET /sources/{name}/jobs?limit=` | admin | Recent jobs for a source. `limit` defaults to 10, maximum 50. |
-| `GET /jobs/{id}` | admin | One job. |
+| Property | Type | Default | Meaning |
+|---|---|---|---|
+| `rag-engine.enabled` | boolean | `true` | Bound but not read yet. Setting it to false disables nothing. |
+| `rag-engine.chunking.strategy` | `FIXED` or `RECURSIVE` | `RECURSIVE` | How documents are split. |
+| `rag-engine.chunking.chunk-size` | int | `800` | Chunk size, in characters for `RECURSIVE` and tokens for `FIXED`. Must be positive. |
+| `rag-engine.chunking.overlap` | int | `100` | Characters repeated from the previous chunk, ignored by `FIXED`. Not negative and smaller than the chunk size, for both strategies. |
+| `rag-engine.limits.max-file-size` | data size | `20MB` | Largest file that is ingested or uploaded. Must be positive. |
+| `rag-engine.limits.max-pages` | int | `500` | Largest page count of a PDF. Must be positive. |
+| `rag-engine.ingestion.batch-size` | int | `50` | Chunks per call to the vector store. Must be positive. |
+| `rag-engine.ingestion.allow-empty-source` | boolean | `false` | Lets an empty scan delete all registered documents of the source. |
+| `rag-engine.retrieval.top-k` | int | `6` | Chunks retrieved when the request names no `topK`. Positive, at most `max-top-k`. |
+| `rag-engine.retrieval.max-top-k` | int | `20` | Upper bound for any `topK`. |
+| `rag-engine.retrieval.similarity-threshold` | double | `0.65` | Minimum similarity of a chunk, from 0 to 1. |
+| `rag-engine.retrieval.query-rewrite` | boolean | `false` | Rewrites the question with the chat model before the search. |
+| `rag-engine.answer.cite-sources` | boolean | `true` | Returns citations with the answer. |
+| `rag-engine.answer.no-answer-message` | string | `I could not find the answer in the provided documents.` | Reply when there is no answer. Must not be blank. |
+| `rag-engine.answer.max-context-chars` | int | `12000` | Most characters of context in the prompt. Must be positive. |
+| `rag-engine.answer.max-question-length` | int | `2000` | Longest accepted question in characters. Must be positive. |
+| `rag-engine.sources[].name` | string | required | Name of the source. |
+| `rag-engine.sources[].type` | `FILESYSTEM` | `FILESYSTEM` | Kind of source. |
+| `rag-engine.sources[].path` | string | required | Root directory of the source. |
+| `rag-engine.sources[].include` | list of strings | none | Glob patterns for files to ingest. None means all files. |
+| `rag-engine.web.enabled` | boolean | `false` | Registers the endpoints. |
+| `rag-engine.web.base-path` | string | `/api/rag` | Prefix for all endpoints. Starts with `/` and does not end with it. |
+| `rag-engine.web.require-authentication` | boolean | `true` | Rejects requests without a principal with 401. |
+| `rag-engine.web.admin-role` | string | `RAG_ADMIN` | Role needed for admin endpoints, 403 otherwise. Blank disables the role check. |
+| `rag-engine.web.tenant.mode` | `SINGLE` or `CUSTOM` | `SINGLE` | Where the tenant comes from. |
+| `rag-engine.web.tenant.default-tenant` | string | `default` | Tenant used in `SINGLE` mode. Must not be blank. |
+| `rag-engine.web.upload.enabled` | boolean | `false` | Registers the upload endpoints. |
+| `rag-engine.web.upload.require-admin` | boolean | `true` | Needs the admin role when authentication is required. When false, any authenticated user may upload. |
+| `rag-engine.web.upload.max-documents-per-tenant` | int | `1000` | Most uploaded documents per tenant. Must be positive. |
 
-Source names may contain letters, digits, dash, underscore and dot, up to 100 characters.
+## Security and privacy
 
-| Property | Default | Description |
-|---|---|---|
-| `rag-engine.web.enabled` | `false` | Registers the endpoints. |
-| `rag-engine.web.base-path` | `/api/rag` | Prefix for all endpoints. |
-| `rag-engine.web.require-authentication` | `true` | Rejects requests without a principal with 401. |
-| `rag-engine.web.admin-role` | `RAG_ADMIN` | Role needed for admin endpoints, 403 otherwise. Blank disables the role check. |
-| `rag-engine.web.tenant.mode` | `SINGLE` | `SINGLE` or `CUSTOM`. |
-| `rag-engine.web.tenant.default-tenant` | `default` | Tenant used in `SINGLE` mode. |
+### Tenant isolation
 
-The question length limit is `rag-engine.answer.max-question-length`.
+- Every vector store search and delete by this library includes a tenant filter built with `FilterExpressionBuilder`.
+- In the REST endpoints the tenant comes only from the `TenantResolver`, never from the request body, query string or headers read by the library. A blank tenant id, one over 100 characters or one with control characters is refused.
+- Code that calls `RagService` or `IngestionService` directly passes the tenant id itself and is responsible for it.
 
-Tenants: the tenant id never comes from the request body, query string or headers. In `SINGLE` mode every request uses `tenant.default-tenant`. In `CUSTOM` mode the application must provide a `TenantResolver` bean, otherwise startup fails.
+### Retrieved text
 
-Authentication: the library has no Spring Security dependency. It checks `HttpServletRequest.getUserPrincipal()` and `isUserInRole(adminRole)`, so any mechanism that fills those works. CORS and CSRF are the host application's job.
+Retrieved text is untrusted. It is placed between `<context>` tags in the user message, the tags are escaped inside chunk text, file names are cleaned before they appear there, and the system prompt tells the model not to follow instructions found in the context.
 
-Warning: with `rag-engine.web.require-authentication=false` all endpoints, including ingestion and job endpoints, are open to anyone who can reach the application. Use it for local demos only.
+### Uploads and files
 
-Jobs are not tenant scoped yet, which is why the job endpoints are admin only.
+Uploads are off by default, confined to a temp file and the `uploads` source, and capped in size and in number per tenant. The rules are listed under [Upload endpoints](#upload-endpoints). The filesystem source skips files that resolve outside its root.
 
-## Upload endpoints
-
-Document upload is off by default. Enable it with `rag-engine.web.upload.enabled=true` on top of the web module. Uploaded documents use the reserved source name `uploads`, which a configured source cannot take, and the tenant comes from the `TenantResolver`.
-
-| Method and path (under `basePath`) | Description |
-|---|---|
-| `POST /documents` | `multipart/form-data` with a part named `file`. 201 with a `Location` header when added, 200 when updated or unchanged. |
-| `GET /documents?page=&size=` | The tenant's documents with page metadata. `size` defaults to 20, maximum 100. |
-| `GET /documents/{externalId}` | One document of the tenant. 404 when unknown. |
-| `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
-
-| Property | Default | Description |
-|---|---|---|
-| `rag-engine.web.upload.enabled` | `false` | Registers the upload endpoints. |
-| `rag-engine.web.upload.require-admin` | `true` | Needs the admin role when authentication is required. When false, any authenticated user may upload. |
-| `rag-engine.web.upload.max-documents-per-tenant` | `1000` | Replacing an existing document is always allowed. |
-
-The size cap is `rag-engine.limits.max-file-size`. The host application must also set `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`, because the container limits apply before this library sees the request.
-
-Safety rules:
-- Only the last path segment of the file name is kept. Empty names, control characters, names over 200 characters, names starting with a dot and names containing `..` are rejected. The name is the document id and is never used to build a file system path.
-- The extension must be one the document loader supports.
-- A `.pdf` must start with the `%PDF` magic bytes.
-- The upload is streamed into a randomly named temp file with a hard size cap, and the temp file is always deleted.
-- The document count per tenant is checked before ingesting.
-
-## Logging and privacy
+### Logging
 
 - `toString` of the library's records, properties included, never prints text such as questions, answers, snippets, file names, tenant ids, error messages or property values, only numbers, statuses, counts and lengths. Exceptions are different: they print their message. JSON responses are not affected.
-- The library's own log messages never contain questions, answers or snippets above debug level.
-- Its warning and error logs can contain file names, source names, tenant ids and request paths. They also contain exception messages and stack traces from the vector store, the models and the document readers, and those can repeat input text.
+- At info, warn and error level the library's own log messages contain only error codes, counts, durations, flags and class names.
+- Source names, tenant ids, file names, file paths, request paths, exception messages and stack traces are logged at debug level only. Exception messages from the vector store, the models and the document readers can repeat input text, so treat debug logs as sensitive.
+
+### Error responses
+
+Server error responses carry a generic message. Client error responses can echo a name sent by the caller or the tenant id, without control and bidirectional characters and cut to 64 characters.
+
+### What the library cannot protect against
+
+- Prompt injection. Delimiters and instructions lower the risk but a model can still follow text inside a document. Do not treat answers as trusted, and do not let them trigger actions without a check.
+- A wrong `TenantResolver`, or a vector store that does not apply the filter correctly.
+- Anyone who can write to a source directory, the vector store or the database.
+- Data sent to your model and embedding providers, which includes questions and document text.
+- Malicious files that exploit a document parser or make it use large amounts of CPU or memory. Parsers run inside your application.
+- Request floods and model cost. `/ask` has no rate limiting; adding it is the host application's responsibility.
 
 The host application must still take care of:
 
@@ -214,16 +334,54 @@ The host application must still take care of:
 - reverse proxies, gateways and tracing tools that record URLs, headers or bodies
 - debug logging and observability settings of Spring and Spring AI, which can record requests and prompts
 
-## Notes
+Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
-`POST /sources/{name}/ingest` is synchronous, so a large source can hit HTTP timeouts in clients and proxies. `/ask` has no rate limiting; adding it is the host application's responsibility.
+## Known limitations
 
-405 and 415 responses use Spring's default error body because the exception handler is scoped to this library's controllers only.
+Ingestion
 
-`RecursiveChunker` counts characters. `FixedTokenChunker` counts tokens and ignores overlap. `chunkSize` therefore means different units for the two strategies.
+- A failed re-ingest can leave a document without chunks until the next successful run, because the old chunks are deleted first.
+- With the in-memory registry and a persistent vector store, files deleted while the application was down stay searchable, and earlier uploads can no longer be listed or deleted. Use the JPA module together with a persistent store.
+- A file or directory that cannot be visited during a scan is treated as removed, and its chunks are deleted.
+- Removing a source from the configuration does not delete its chunks.
+- Changing the embedding model is not detected.
+- Ingestion and its jobs run synchronously.
+- The ingestion lock works inside one JVM only. When running several instances, use an external scheduler or lock so only one instance ingests a given source and tenant at a time.
+- A job stays `RUNNING` if the application stops during the run.
+- The in-memory job store is never pruned.
+- With the JPA module, source names and external ids are limited to 255 characters.
 
-The ingestion lock works inside one JVM only. When running several instances, use an external scheduler or lock so only one instance ingests a given source and tenant at a time.
+Documents and uploads
 
-If more than one `VectorStore` bean exists, mark one of them `@Primary`.
+- Document parsers have no time limit, and the page limit applies to PDF only.
+- Each file is read into memory while it is parsed.
+- The upload quota is not atomic, so concurrent uploads can exceed it.
+- Uploads and deletes of one tenant do not run in parallel. A concurrent one fails with 409.
+- The document list is loaded in full before it is paged.
 
-A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest.
+Access and retrieval
+
+- The job endpoints are not tenant scoped.
+- The tenant filter was checked against `SimpleVectorStore` and the pgvector filter converter only.
+
+## Roadmap
+
+No roadmap is committed yet. The known limitations above are the open items.
+
+## Building from source
+
+You need Java 21.
+
+Build and test the library modules, without Docker:
+
+```bash
+./mvnw verify -pl "!rag-engine-sample"
+```
+
+The sample needs Docker and Ollama as described under [Try the sample](#try-the-sample). Its Docker tests are skipped unless the `docker-tests` profile is active.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE).
