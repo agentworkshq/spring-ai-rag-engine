@@ -2,14 +2,17 @@ package dev.agentworkshq.rag.web.exception;
 
 import dev.agentworkshq.rag.core.constants.ErrorMessages;
 import dev.agentworkshq.rag.core.exception.BaseException;
+import dev.agentworkshq.rag.core.text.Texts;
 import dev.agentworkshq.rag.web.controller.RagControllers;
 import dev.agentworkshq.rag.web.dto.ApiError;
 import dev.agentworkshq.rag.web.dto.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -34,12 +37,12 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBase(BaseException ex, HttpServletRequest req) {
         ErrorMessages em = ex.getErrorMessage();
         if (em.getHttpStatus() >= 500) {
-            log.error("{} on {}", em.name(), req.getRequestURI(), ex);
+            logServerError(em, ex, req.getRequestURI());
         } else {
-            log.warn("{} on {}: {}", em.name(), req.getRequestURI(), ex.getMessage());
+            logClientError(em, ex, req.getRequestURI());
         }
         return ResponseEntity.status(em.getHttpStatus())
-                .body(ApiResponse.error(em.name(), ex.getMessage(), req.getRequestURI()));
+                .body(ApiResponse.error(em.name(), ex.getClientMessage(), echo(req.getRequestURI())));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -49,17 +52,17 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
                 .map(ConstraintViolation::getMessageTemplate)
                 .flatMap(RagExceptionHandler::toErrorMessage)
                 .orElse(ErrorMessages.RAG_E005);
-        log.warn("{} on {}: constraint violation", em.name(), req.getRequestURI());
+        logClientError(em, ex, req.getRequestURI());
         return ResponseEntity.badRequest()
-                .body(ApiResponse.error(em.name(), em.getMessage(), req.getRequestURI()));
+                .body(ApiResponse.error(em.name(), em.getMessage(), echo(req.getRequestURI())));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception ex, HttpServletRequest req) {
         ErrorMessages em = ErrorMessages.RAG_E007;
-        log.error("Unexpected error on {}", req.getRequestURI(), ex);
+        logServerError(em, ex, req.getRequestURI());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(em.name(), em.getMessage(), req.getRequestURI()));
+                .body(ApiResponse.error(em.name(), em.getMessage(), echo(req.getRequestURI())));
     }
 
     @Override
@@ -71,7 +74,8 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
         List<ApiError> fields = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> new ApiError(f.getField(), f.getDefaultMessage()))
                 .toList();
-        log.warn("{} on {}: {} field error(s)", em.name(), path(request), fields.size());
+        log.warn("{}: {} field error(s)", em.name(), fields.size());
+        log.debug("{} on {}", em.name(), path(request), ex);
         return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), fields, path(request)),
                 headers, HttpStatus.BAD_REQUEST);
     }
@@ -82,7 +86,7 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
                                                                      HttpHeaders headers, HttpStatusCode status,
                                                                      WebRequest request) {
         ErrorMessages em = ErrorMessages.RAG_E026;
-        log.warn("{} on {}", em.name(), path(request));
+        logClientError(em, ex, path(request));
         return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), path(request)), headers,
                 HttpStatus.valueOf(em.getHttpStatus()));
     }
@@ -93,7 +97,7 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
                                                                           HttpStatusCode status,
                                                                           WebRequest request) {
         ErrorMessages em = ErrorMessages.RAG_E025;
-        log.warn("{} on {}", em.name(), path(request));
+        logClientError(em, ex, path(request));
         return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), path(request)), headers,
                 HttpStatus.valueOf(em.getHttpStatus()));
     }
@@ -103,9 +107,9 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
                                                              HttpStatusCode status, WebRequest request) {
         ErrorMessages em = forStatus(status);
         if (status.is5xxServerError()) {
-            log.error("{} on {}", em.name(), path(request), ex);
+            logServerError(em, ex, path(request));
         } else {
-            log.warn("{} on {}: {}", em.name(), path(request), ex.getClass().getSimpleName());
+            logClientError(em, ex, path(request));
         }
         return new ResponseEntity<>(ApiResponse.error(em.name(), em.getMessage(), path(request)), headers, status);
     }
@@ -117,8 +121,25 @@ public class RagExceptionHandler extends ResponseEntityExceptionHandler {
         };
     }
 
+    private static void logServerError(ErrorMessages em, Exception ex, String uri) {
+        log.error("{}: {}", em.name(), ex.getClass().getName());
+        log.debug("{} on {}", em.name(), uri, ex);
+    }
+
+    private static void logClientError(ErrorMessages em, Exception ex, String uri) {
+        log.warn("{}: {}", em.name(), ex.getClass().getName());
+        log.debug("{} on {}", em.name(), uri, ex);
+    }
+
     private static String path(WebRequest request) {
-        return request instanceof ServletWebRequest servlet ? servlet.getRequest().getRequestURI() : null;
+        return request instanceof ServletWebRequest servlet ? echo(servlet.getRequest().getRequestURI()) : null;
+    }
+
+    // a path can carry a file name or a source name, so each segment is cleaned and cut like any echoed value
+    private static String echo(String uri) {
+        return Arrays.stream(uri.split("/", -1))
+                .map(segment -> Texts.clean(segment, Texts.MAX_ECHO_LENGTH))
+                .collect(Collectors.joining("/"));
     }
 
     private static Optional<ErrorMessages> toErrorMessage(String name) {

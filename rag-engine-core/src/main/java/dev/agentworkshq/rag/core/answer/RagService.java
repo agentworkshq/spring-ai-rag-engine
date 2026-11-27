@@ -3,6 +3,7 @@ package dev.agentworkshq.rag.core.answer;
 import dev.agentworkshq.rag.core.constants.ErrorMessages;
 import dev.agentworkshq.rag.core.exception.ServiceException;
 import dev.agentworkshq.rag.core.ingest.ChunkMetadata;
+import dev.agentworkshq.rag.core.text.Texts;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,7 +29,9 @@ public class RagService {
     private static final Logger log = LoggerFactory.getLogger(RagService.class);
     private static final Pattern REFERENCE = Pattern.compile("\\[(\\d+(?:\\s*,\\s*\\d+)*)]");
     private static final Pattern CONTEXT_TAG = Pattern.compile("<\\s*(/?)\\s*context\\s*>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern WHITESPACE = Pattern.compile("(?U)\\s+");
     private static final int SNIPPET_LENGTH = 200;
+    private static final int HEADER_NAME_LENGTH = 100;
 
     private final Supplier<VectorStore> vectorStores;
     private final Supplier<ChatClient.Builder> chatClients;
@@ -139,8 +142,15 @@ public class RagService {
     private static String header(Document doc) {
         Object filename = doc.getMetadata().get(ChunkMetadata.FILENAME);
         Object page = doc.getMetadata().get(ChunkMetadata.PAGE);
-        String header = filename != null ? filename.toString() : "unknown";
+        String header = filename != null ? headerName(filename.toString()) : "unknown";
         return page != null ? header + " (page " + page + ")" : header;
+    }
+
+    // a file name must not be able to start a line of its own or look like a citation or a tag
+    private static String headerName(String filename) {
+        String flat = WHITESPACE.matcher(filename).replaceAll(" ")
+                .replace('<', '(').replace('[', '(').replace('>', ')').replace(']', ')');
+        return Texts.clean(flat, HEADER_NAME_LENGTH);
     }
 
     // chunk text must not be able to close the context block early

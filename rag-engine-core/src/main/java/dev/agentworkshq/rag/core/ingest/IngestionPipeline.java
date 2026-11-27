@@ -37,11 +37,12 @@ public class IngestionPipeline {
     private final String chunkingSignature;
     private final int batchSize;
     private final boolean allowEmptySource;
+    private final long maxFileSize;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public IngestionPipeline(Supplier<VectorStore> vectorStores, DocumentLoader loader, ChunkingStrategy chunker,
                              DocumentRegistry registry, IngestionJobStore jobs, String chunkingSignature,
-                             int batchSize, boolean allowEmptySource) {
+                             int batchSize, boolean allowEmptySource, long maxFileSize) {
         this.vectorStores = vectorStores;
         this.loader = loader;
         this.chunker = chunker;
@@ -50,9 +51,11 @@ public class IngestionPipeline {
         this.chunkingSignature = chunkingSignature;
         this.batchSize = batchSize;
         this.allowEmptySource = allowEmptySource;
+        this.maxFileSize = maxFileSize;
     }
 
     public IngestionResult ingest(RagSource source, String tenantId) {
+        IngestionRequest.requireTenant(tenantId);
         VectorStore store = store();
         return locked(source.name(), tenantId, () -> {
             Long jobId = null;
@@ -60,7 +63,9 @@ public class IngestionPipeline {
                 jobId = jobs.start(source.name()).id();
                 return run(source, tenantId, jobId, store);
             } catch (RuntimeException e) {
-                log.error("Ingestion of source {} for tenant {} failed", source.name(), tenantId, e);
+                ErrorMessages code = e instanceof BaseException base ? base.getErrorMessage() : ErrorMessages.RAG_E006;
+                log.error("Ingestion run failed: {} {}", code.name(), e.getClass().getName());
+                log.debug("Ingestion of source {} for tenant {} failed", source.name(), tenantId, e);
                 if (jobId != null) {
                     jobs.fail(jobId, shortMessage(e));
                 }
@@ -73,12 +78,14 @@ public class IngestionPipeline {
     }
 
     public DocumentIngestResult ingestDocument(String sourceName, String tenantId, SourceItem item) {
+        IngestionRequest.requireTenant(tenantId);
         VectorStore store = store();
         return locked(sourceName, tenantId, () -> process(store, sourceName, tenantId, item,
                 registry.find(sourceName, item.externalId(), tenantId).orElse(null)));
     }
 
     public void deleteDocument(String sourceName, String tenantId, String externalId) {
+        IngestionRequest.requireTenant(tenantId);
         VectorStore store = store();
         locked(sourceName, tenantId, () -> {
             if (registry.find(sourceName, externalId, tenantId).isEmpty()) {
@@ -91,6 +98,7 @@ public class IngestionPipeline {
     }
 
     public List<SourceDocumentRecord> listDocuments(String sourceName, String tenantId) {
+        IngestionRequest.requireTenant(tenantId);
         return registry.findBySource(sourceName, tenantId);
     }
 
@@ -142,7 +150,8 @@ public class IngestionPipeline {
                 }
             } catch (RuntimeException e) {
                 failed++;
-                log.warn("Ingestion of {} in source {} failed: {}", item.externalId(), sourceName, e.toString());
+                log.warn("Ingestion of a document failed: {}", e.getClass().getName());
+                log.debug("Ingestion of {} in source {} failed", item.externalId(), sourceName, e);
             }
         }
 
@@ -156,7 +165,8 @@ public class IngestionPipeline {
                 deleted++;
             } catch (RuntimeException e) {
                 failed++;
-                log.warn("Removal of {} in source {} failed: {}", record.externalId(), sourceName, e.toString());
+                log.warn("Removal of a document failed: {}", e.getClass().getName());
+                log.debug("Removal of {} in source {} failed", record.externalId(), sourceName, e);
             }
         }
 
@@ -167,7 +177,7 @@ public class IngestionPipeline {
 
     private DocumentIngestResult process(VectorStore store, String sourceName, String tenantId, SourceItem item,
                                          SourceDocumentRecord existing) {
-        String fileHash = ContentHasher.fileHash(item);
+        String fileHash = ContentHasher.fileHash(item, maxFileSize);
         String effectiveHash = ContentHasher.effectiveHash(fileHash, chunkingSignature);
         String documentId = documentId(sourceName, item.externalId());
         if (existing != null && existing.contentHash().equals(effectiveHash)) {
@@ -187,7 +197,8 @@ public class IngestionPipeline {
             try {
                 deleteChunks(store, documentId, sourceName, tenantId);
             } catch (RuntimeException cleanup) {
-                log.warn("Cleanup of {} in source {} failed: {}", item.externalId(), sourceName, cleanup.toString());
+                log.warn("Cleanup after a failed document failed: {}", cleanup.getClass().getName());
+                log.debug("Cleanup of {} in source {} failed", item.externalId(), sourceName, cleanup);
             }
             registry.delete(sourceName, item.externalId(), tenantId);
             throw e;
@@ -230,8 +241,8 @@ public class IngestionPipeline {
     }
 
     private static String shortMessage(RuntimeException e) {
-        if (e instanceof BaseException) {
-            return e.getMessage();
+        if (e instanceof BaseException base) {
+            return base.getClientMessage();
         }
         return "Ingestion failed: " + e.getClass().getSimpleName();
     }

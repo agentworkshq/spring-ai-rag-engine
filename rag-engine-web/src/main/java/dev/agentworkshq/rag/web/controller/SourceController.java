@@ -6,6 +6,7 @@ import dev.agentworkshq.rag.web.dto.ApiResponse;
 import dev.agentworkshq.rag.web.dto.IngestionResultResponse;
 import dev.agentworkshq.rag.web.dto.JobResponse;
 import dev.agentworkshq.rag.web.security.RequestGuard;
+import dev.agentworkshq.rag.web.tenant.TenantContext;
 import dev.agentworkshq.rag.web.tenant.TenantResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Max;
@@ -44,7 +45,8 @@ public class SourceController implements RagControllers {
             HttpServletRequest request) {
         guard.requireAdmin(request);
         return ResponseEntity.ok(ApiResponse.success("Ingestion finished",
-                IngestionResultResponse.from(ingestionService.ingest(name, tenantResolver.resolve(request)))));
+                IngestionResultResponse.from(ingestionService.ingest(name,
+                        TenantContext.require(tenantResolver, request)))));
     }
 
     @GetMapping("/sources/{name}/jobs")

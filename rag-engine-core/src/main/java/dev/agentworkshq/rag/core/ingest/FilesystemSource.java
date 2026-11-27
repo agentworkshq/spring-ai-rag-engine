@@ -75,7 +75,8 @@ public class FilesystemSource implements RagSource {
         }
         Path real = file.toRealPath();
         if (!real.startsWith(root)) {
-            log.warn("Skipping {} in source {}: it resolves outside the source root", file, name);
+            log.warn("Skipping a file that resolves outside its source root");
+            log.debug("Skipping {} in source {}", file, name);
             return Optional.empty();
         }
         if (!Files.isRegularFile(real) || isHidden(real)) {

@@ -50,7 +50,7 @@ class IngestionPipelineTest {
     private IngestionPipeline pipeline(int chunkSize, int batchSize, boolean allowEmpty) {
         return new IngestionPipeline(() -> store, new DefaultDocumentLoader(1024 * 1024, 10),
                 new RecursiveChunker(chunkSize, 10), registry, jobs, "RECURSIVE:" + chunkSize + ":10", batchSize,
-                allowEmpty);
+                allowEmpty, 1024 * 1024);
     }
 
     private IngestionPipeline pipeline() {

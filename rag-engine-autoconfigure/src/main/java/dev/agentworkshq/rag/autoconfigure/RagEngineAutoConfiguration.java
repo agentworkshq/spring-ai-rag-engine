@@ -83,14 +83,15 @@ public class RagEngineAutoConfiguration {
     @ConditionalOnMissingBean
     IngestionPipeline ingestionPipeline(ObjectProvider<VectorStore> vectorStore, DocumentLoader documentLoader,
                                         ChunkingStrategy chunkingStrategy, DocumentRegistry documentRegistry,
-                                        IngestionJobStore ingestionJobStore, RagEngineProperties properties) {
+                                        IngestionJobStore ingestionJobStore, RagEngineProperties properties,
+                                        IngestionLimits limits) {
         RagEngineProperties.Chunking chunking = properties.chunking();
         String signature = chunking.strategy() == RagEngineProperties.Chunking.Strategy.FIXED
                 ? "FIXED:" + chunking.chunkSize()
                 : "RECURSIVE:" + chunking.chunkSize() + ":" + chunking.overlap();
         return new IngestionPipeline(vectorStore::getIfAvailable, documentLoader, chunkingStrategy,
                 documentRegistry, ingestionJobStore, signature, properties.ingestion().batchSize(),
-                properties.ingestion().allowEmptySource());
+                properties.ingestion().allowEmptySource(), limits.maxFileSize());
     }
 
     @Bean

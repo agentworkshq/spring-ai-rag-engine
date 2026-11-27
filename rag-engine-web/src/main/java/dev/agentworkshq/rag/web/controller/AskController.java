@@ -6,6 +6,7 @@ import dev.agentworkshq.rag.web.dto.ApiResponse;
 import dev.agentworkshq.rag.web.dto.AskRequest;
 import dev.agentworkshq.rag.web.dto.AskResponse;
 import dev.agentworkshq.rag.web.security.RequestGuard;
+import dev.agentworkshq.rag.web.tenant.TenantContext;
 import dev.agentworkshq.rag.web.tenant.TenantResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,7 +32,8 @@ public class AskController implements RagControllers {
     public ResponseEntity<ApiResponse<AskResponse>> ask(@Valid @RequestBody AskRequest body,
                                                         HttpServletRequest request) {
         guard.requireAuthenticated(request);
-        RagContext context = new RagContext(tenantResolver.resolve(request), body.sourceNames(), body.topK());
+        RagContext context = new RagContext(TenantContext.require(tenantResolver, request), body.sourceNames(),
+                body.topK());
         return ResponseEntity.ok(ApiResponse.success("Answer generated successfully",
                 AskResponse.from(ragService.ask(body.question(), context))));
     }

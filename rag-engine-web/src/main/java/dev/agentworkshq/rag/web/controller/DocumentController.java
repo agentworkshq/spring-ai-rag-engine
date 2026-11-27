@@ -6,6 +6,7 @@ import dev.agentworkshq.rag.web.dto.ApiResponse;
 import dev.agentworkshq.rag.web.dto.DocumentResponse;
 import dev.agentworkshq.rag.web.dto.PageMetadata;
 import dev.agentworkshq.rag.web.security.RequestGuard;
+import dev.agentworkshq.rag.web.tenant.TenantContext;
 import dev.agentworkshq.rag.web.tenant.TenantResolver;
 import dev.agentworkshq.rag.web.upload.UploadService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,7 +43,7 @@ public class DocumentController implements RagControllers {
     public ResponseEntity<ApiResponse<DocumentResponse>> upload(@RequestParam("file") MultipartFile file,
                                                                 HttpServletRequest request) {
         guard.requireUploadAccess(request);
-        DocumentIngestResult result = uploads.upload(file, tenantResolver.resolve(request));
+        DocumentIngestResult result = uploads.upload(file, TenantContext.require(tenantResolver, request));
         DocumentResponse body = DocumentResponse.from(result);
         if (result.outcome() == DocumentIngestResult.Outcome.ADDED) {
             URI location = URI.create(request.getRequestURI() + "/"
@@ -58,7 +59,7 @@ public class DocumentController implements RagControllers {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             HttpServletRequest request) {
         guard.requireUploadAccess(request);
-        List<SourceDocumentRecord> all = uploads.list(tenantResolver.resolve(request));
+        List<SourceDocumentRecord> all = uploads.list(TenantContext.require(tenantResolver, request));
         int from = (int) Math.min((long) page * size, all.size());
         List<DocumentResponse> items = all.subList(from, Math.min(all.size(), from + size)).stream()
                 .map(DocumentResponse::from).toList();
@@ -71,7 +72,7 @@ public class DocumentController implements RagControllers {
     public ResponseEntity<ApiResponse<DocumentResponse>> get(@PathVariable String externalId,
                                                              HttpServletRequest request) {
         guard.requireUploadAccess(request);
-        SourceDocumentRecord record = uploads.get(externalId, tenantResolver.resolve(request));
+        SourceDocumentRecord record = uploads.get(externalId, TenantContext.require(tenantResolver, request));
         return ResponseEntity.ok(ApiResponse.success("Document retrieved successfully",
                 DocumentResponse.from(record)));
     }
@@ -79,7 +80,7 @@ public class DocumentController implements RagControllers {
     @DeleteMapping("/documents/{externalId}")
     public ResponseEntity<Void> delete(@PathVariable String externalId, HttpServletRequest request) {
         guard.requireUploadAccess(request);
-        uploads.delete(externalId, tenantResolver.resolve(request));
+        uploads.delete(externalId, TenantContext.require(tenantResolver, request));
         return ResponseEntity.noContent().build();
     }
 }
