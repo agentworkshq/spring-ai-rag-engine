@@ -9,10 +9,12 @@ import dev.agentworkshq.rag.jpa.store.JpaIngestionJobStore;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurationPackage;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration(beforeName = "dev.agentworkshq.rag.autoconfigure.RagEngineAutoConfiguration")
 @AutoConfigurationPackage
+@ConditionalOnProperty(prefix = "rag-engine", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class RagJpaAutoConfiguration {
 
     @Bean

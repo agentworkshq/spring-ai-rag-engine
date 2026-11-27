@@ -3,7 +3,6 @@ package dev.agentworkshq.rag.web;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -91,7 +90,7 @@ class LogPrivacyTest {
 
         IngestionPipeline pipeline = new IngestionPipeline(() -> store, new DefaultDocumentLoader(1024, 10),
                 new RecursiveChunker(100, 10), registry, new InMemoryIngestionJobStore(), "RECURSIVE:100:10", 50,
-                false, 1024);
+                false, 0.5, 1024);
         IngestionService ingestion = new IngestionService(
                 new SourceRegistry(List.of(new FilesystemSource(MARKER, root, List.of()), broken)), pipeline);
         RagService rag = new RagService(() -> store, () -> mock(ChatClient.Builder.class), new NoopReranker(),
@@ -145,11 +144,9 @@ class LogPrivacyTest {
     }
 
     @Test
-    void aFailingDocumentCleanupAndRemoval() throws Exception {
+    void aFailingDocumentAndRemoval() throws Exception {
         registry.save(new SourceDocumentRecord(MARKER, MARKER + "-gone.txt", MARKER, "hash", 1));
-        // the first delete clears the old chunks, every later one fails
-        doNothing().doThrow(new IllegalStateException(MARKER))
-                .when(store).delete(any(Filter.Expression.class));
+        doThrow(new IllegalStateException(MARKER)).when(store).delete(any(Filter.Expression.class));
         doThrow(new IllegalStateException(MARKER)).when(store).add(anyList());
 
         mvc.perform(post("/sources/" + MARKER + "/ingest"))
@@ -157,7 +154,6 @@ class LogPrivacyTest {
                 .andExpect(jsonPath("$.data.failed").value(2));
 
         assertThat(messages(Level.WARN)).containsExactly(
-                "Cleanup after a failed document failed: java.lang.IllegalStateException",
                 "Ingestion of a document failed: java.lang.IllegalStateException",
                 "Removal of a document failed: java.lang.IllegalStateException");
         assertOnlyDebugCarriesTheMarker();

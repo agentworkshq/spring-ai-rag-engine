@@ -112,7 +112,7 @@ class UploadEndpointsTest {
         IngestionPipeline pipeline(VectorStore store, InMemoryDocumentRegistry registry, IngestionJobStore jobs,
                                    IngestionLimits limits) {
             return new IngestionPipeline(() -> store, new DefaultDocumentLoader(limits.maxFileSize(), 10),
-                    new RecursiveChunker(100, 10), registry, jobs, "RECURSIVE:100:10", 50, false,
+                    new RecursiveChunker(100, 10), registry, jobs, "RECURSIVE:100:10", 50, false, 0.5,
                     limits.maxFileSize());
         }
 

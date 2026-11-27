@@ -18,7 +18,7 @@ class ContentHasherTest {
     }
 
     private static void assertTooLarge(SourceItem item, long maxFileSize) {
-        assertThatThrownBy(() -> ContentHasher.fileHash(item, maxFileSize))
+        assertThatThrownBy(() -> ContentHasher.read(item, maxFileSize))
                 .isInstanceOf(ServiceException.class)
                 .satisfies(e -> assertThat(((ServiceException) e).getErrorMessage())
                         .isEqualTo(ErrorMessages.RAG_E009));
@@ -59,10 +59,10 @@ class ContentHasherTest {
     }
 
     @Test
-    void anItemOfExactlyTheLimitIsHashed() {
+    void anItemOfExactlyTheLimitIsReadAndHashed() {
         SourceItem item = item(3, () -> new ByteArrayInputStream(new byte[] {'a', 'b', 'c'}));
 
-        assertThat(ContentHasher.fileHash(item, 3))
+        assertThat(ContentHasher.fileHash(ContentHasher.read(item, 3)))
                 .isEqualTo("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
 }

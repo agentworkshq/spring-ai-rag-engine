@@ -26,6 +26,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@ConditionalOnProperty(prefix = "rag-engine", name = "enabled", havingValue = "true", matchIfMissing = true)
 @ConditionalOnProperty(prefix = "rag-engine.web", name = "enabled", havingValue = "true")
 @EnableConfigurationProperties(RagWebProperties.class)
 public class RagWebAutoConfiguration {

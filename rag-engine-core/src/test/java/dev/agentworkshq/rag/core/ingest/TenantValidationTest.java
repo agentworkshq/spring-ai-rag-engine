@@ -28,7 +28,7 @@ class TenantValidationTest {
         storeRequests++;
         return null;
     }, new DefaultDocumentLoader(1024, 10), new RecursiveChunker(100, 10), registry, jobs, "RECURSIVE:100:10", 50,
-            false, 1024);
+            false, 0.5, 1024);
 
     private final RagSource source = new RagSource() {
         @Override

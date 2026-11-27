@@ -14,23 +14,20 @@ public final class ContentHasher {
     private ContentHasher() {
     }
 
-    public static String fileHash(SourceItem item, long maxFileSize) {
+    public static byte[] read(SourceItem item, long maxFileSize) {
         requireWithinLimit(item, item.size(), maxFileSize);
-        MessageDigest digest = sha256();
         try (InputStream in = item.open()) {
-            byte[] buffer = new byte[8192];
-            long total = 0;
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                total += read;
-                // the declared size can be stale, so the read itself is bounded too
-                requireWithinLimit(item, total, maxFileSize);
-                digest.update(buffer, 0, read);
-            }
+            // the declared size can be stale, so the read itself is bounded too
+            byte[] bytes = in.readNBytes((int) Math.min(maxFileSize + 1, Integer.MAX_VALUE - 8));
+            requireWithinLimit(item, bytes.length, maxFileSize);
+            return bytes;
         } catch (IOException e) {
             throw new ServiceException(e, ErrorMessages.RAG_E015, item.externalId());
         }
-        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    public static String fileHash(byte[] bytes) {
+        return HexFormat.of().formatHex(sha256().digest(bytes));
     }
 
     public static String effectiveHash(String fileHash, String chunkingSignature) {

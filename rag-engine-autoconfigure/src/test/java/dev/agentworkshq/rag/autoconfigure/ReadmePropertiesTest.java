@@ -212,7 +212,7 @@ class ReadmePropertiesTest {
             return name.endsWith(".top-k") ? current - 1 : current + 1;
         }
         if (type == double.class) {
-            return 0.5;
+            return value(name, Map.of()).equals(0.5) ? 0.25 : 0.5;
         }
         if (type.isEnum()) {
             Object[] constants = type.getEnumConstants();

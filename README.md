@@ -17,7 +17,9 @@ What it does not do:
 
 ### Use it in your app
 
-The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` in this repository to put them in your local Maven repository.
+You need Java 21, Spring Boot 4.1 and Spring AI 2.0.
+
+The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` (`.\mvnw.cmd install -DskipTests` on Windows) in this repository to put them in your local Maven repository. Then add them to your application:
 
 ```xml
 <dependency>
@@ -32,7 +34,7 @@ The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` in 
 </dependency>
 ```
 
-You also need a Spring AI chat model, an embedding model and a vector store on the classpath. If more than one `VectorStore` bean exists, mark one of them `@Primary`.
+Your application brings its own chat model, embedding model and vector store. Add the Spring AI starters for them, for example `spring-ai-starter-model-ollama` (chat and embedding) and `spring-ai-starter-vector-store-pgvector`, take their versions from `org.springframework.ai:spring-ai-bom` 2.0, and configure them as Spring AI describes. If more than one `VectorStore` bean exists, mark one of them `@Primary`.
 
 Minimal configuration:
 
@@ -46,7 +48,35 @@ rag-engine:
       path: ./docs
 ```
 
-The endpoints then live under `/api/rag` and require an authenticated user. See [Configuration reference](#configuration-reference) for all properties.
+A source `path` is relative to the working directory of your application. The directory must exist, otherwise the application does not start.
+
+The endpoints then live under `/api/rag`. See [Configuration reference](#configuration-reference) for all properties.
+
+### Secure the endpoints
+
+The library does not log anyone in. Without a security setup every call returns 401, and ingestion also needs the admin role. With Spring Security:
+
+1. Add `org.springframework.boot:spring-boot-starter-security` to your application.
+2. Give an admin user the role `RAG_ADMIN`, which Spring Security stores as the authority `ROLE_RAG_ADMIN`. For a first test set `spring.security.user.name=admin`, `spring.security.user.password=change-me` and `spring.security.user.roles=RAG_ADMIN`. With your own user store, grant `ROLE_RAG_ADMIN`.
+3. Spring Security protects POST and DELETE calls against CSRF by default, so a call without a CSRF token is rejected, with the default setup as 401 even when the password is correct. Either send the token, or declare a `SecurityFilterChain` bean that exempts the library's paths. In that bean call `http.authorizeHttpRequests(a -> a.anyRequest().authenticated())`, `http.httpBasic(Customizer.withDefaults())` and `http.csrf(c -> c.ignoringRequestMatchers("/api/rag/**"))`, then return `http.build()`.
+
+Exempt the paths only if every client sends its credentials explicitly, as curl does below. If browsers reach them with a session cookie or remembered Basic credentials, keep CSRF protection and send the token.
+
+### Ingest your documents
+
+Nothing is ingested until you trigger it. With the test user above and the source named `docs`:
+
+```bash
+curl -X POST -u admin:change-me http://localhost:8080/api/rag/sources/docs/ingest
+```
+
+```powershell
+$token = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("admin:change-me"))
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/rag/sources/docs/ingest `
+  -Headers @{ Authorization = "Basic $token" }
+```
+
+The response counts the added, updated, deleted, skipped and failed documents.
 
 ### Try the sample
 
@@ -56,7 +86,8 @@ Prerequisites:
 - Java 21
 - Docker with Compose
 - about 6 GB of free RAM
-- the first start downloads about 2 GB of models (llama3.2 and nomic-embed-text), so it takes a few minutes
+- the first start downloads about 2 GB of models (llama3.2 and nomic-embed-text), so it takes a few minutes. The Docker images for PostgreSQL and Ollama are downloaded on top of that
+- free ports 5433 and 11434. A locally installed Ollama already uses 11434, so stop it first
 
 Start the database and Ollama, then the application:
 
@@ -74,7 +105,9 @@ docker compose -f rag-engine-sample/compose.yaml up -d
 cd rag-engine-sample; ..\mvnw.cmd spring-boot:run
 ```
 
-The application listens on `http://localhost:8080`. Run the examples below from a second terminal in the `rag-engine-sample` directory. Stop everything with `docker compose -f compose.yaml down` (add `-v` to delete the data).
+The application listens on `http://localhost:8080`. Run the examples below from a second terminal in the `rag-engine-sample` directory.
+
+To stop everything, press Ctrl+C in the terminal that runs the application, then run `docker compose -f compose.yaml down` in the `rag-engine-sample` directory (add `-v` to delete the data and the downloaded models).
 
 Ingest the documents in `docs-sample`:
 
@@ -166,9 +199,21 @@ Any other extension fails for that document. `rag-engine.limits.max-file-size` a
 
 A document is re-ingested when its content, the chunking strategy, `chunkSize` or `overlap` changes. Changing the embedding model is not detected and needs a manual full re-ingest. Unchanged documents are skipped.
 
+Each file is read once, and the hash and the chunks come from those bytes. A file that is not empty but yields no text fails and replaces nothing. An empty text file gives no chunks.
+
 Documents that are no longer in the source are removed. A scan that fails removes nothing. The filesystem source fails the whole run when it cannot visit a file or list a directory, unless that file or directory is hidden. If a source returns nothing but has registered documents, the run fails and deletes nothing, unless `rag-engine.ingestion.allow-empty-source` is true.
 
+A run that would remove more than `rag-engine.ingestion.max-delete-ratio` of the documents registered for the source and tenant fails before it changes anything, once at least 10 are registered. This also applies to an empty source, so removing everything from such a source needs both `allow-empty-source` and a ratio of `1`.
+
 Only one ingestion operation can run for a source and tenant at a time. A second one fails with a conflict.
+
+### Failures and retries
+
+A failure never removes a registry entry. Before the vector store is changed, the entry is marked dirty with the hash `!dirty`. New chunks overwrite the old ones, surplus old chunks are deleted, and only then the entry gets the new hash and chunk count. A removal marks the entry, deletes the chunks and then deletes the entry.
+
+A dirty entry is never skipped: the next run ingests the document again and counts it as updated, or retries the removal. While an entry is dirty, its chunk count is the most chunks that can exist. `listDocuments` returns dirty entries like all others, and they can be deleted.
+
+If the result of a run cannot be written to the job store, `ingest` still returns it and tries to mark the job failed.
 
 ## Retrieval and answers
 
@@ -221,6 +266,8 @@ Document upload is off by default. Enable it with `rag-engine.web.upload.enabled
 | `GET /documents/{externalId}` | One document of the tenant. 404 when unknown. |
 | `DELETE /documents/{externalId}` | Removes the document and its chunks. 204, or 404 when unknown. |
 
+A document whose upload or delete failed stays in the list and counts against the quota. It looks like any other document, and its `chunkCount` is the most chunks that can exist. Delete it or upload it again. Uploading it again answers 200. A file without extractable text answers 422, and a new one then appears in the list with no chunks.
+
 The size cap is `rag-engine.limits.max-file-size`. The host application must also set `spring.servlet.multipart.max-file-size` and `spring.servlet.multipart.max-request-size`, because the container limits apply before this library sees the request.
 
 Safety rules:
@@ -262,14 +309,15 @@ The `rag-engine.web.*` properties need the `rag-engine-web` module.
 
 | Property | Type | Default | Meaning |
 |---|---|---|---|
-| `rag-engine.enabled` | boolean | `true` | When false, the core auto-configuration creates no beans: no ingestion, answering, sources or in-memory stores. The web and JPA modules are not switched off by it. Keep `rag-engine.web.enabled` false as well, because the endpoints need those beans and startup fails without them. The JPA module has no property and stays active while it is on the classpath. |
+| `rag-engine.enabled` | boolean | `true` | When false, the core, web and JPA auto-configurations create nothing. A Flyway location that you added for the JPA schema is still migrated. |
 | `rag-engine.chunking.strategy` | `FIXED` or `RECURSIVE` | `RECURSIVE` | How documents are split. |
 | `rag-engine.chunking.chunk-size` | int | `800` | Chunk size, in characters for `RECURSIVE` and tokens for `FIXED`. Must be positive. |
 | `rag-engine.chunking.overlap` | int | `100` | Characters repeated from the previous chunk, ignored by `FIXED`. Not negative and smaller than the chunk size, for both strategies. |
 | `rag-engine.limits.max-file-size` | data size | `20MB` | Largest file that is ingested or uploaded. Must be positive. |
 | `rag-engine.limits.max-pages` | int | `500` | Largest page count of a PDF. Must be positive. |
 | `rag-engine.ingestion.batch-size` | int | `50` | Chunks per call to the vector store. Must be positive. |
-| `rag-engine.ingestion.allow-empty-source` | boolean | `false` | Lets an empty scan delete all registered documents of the source. |
+| `rag-engine.ingestion.allow-empty-source` | boolean | `false` | Lets an empty scan delete the registered documents of the source, within `rag-engine.ingestion.max-delete-ratio`. |
+| `rag-engine.ingestion.max-delete-ratio` | double | `0.5` | Largest share of the registered documents, from 0 to 1, that one run may remove when at least 10 are registered. `1` disables the guard. |
 | `rag-engine.retrieval.top-k` | int | `6` | Chunks retrieved when the request names no `topK`. Positive, at most `max-top-k`. |
 | `rag-engine.retrieval.max-top-k` | int | `20` | Upper bound for any `topK`. |
 | `rag-engine.retrieval.similarity-threshold` | double | `0.65` | Minimum similarity of a chunk, from 0 to 1. |
@@ -340,8 +388,12 @@ Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 Ingestion
 
-- A failed re-ingest can leave a document without chunks until the next successful run, because the old chunks are deleted first.
-- With the in-memory registry and a persistent vector store, files deleted while the application was down stay searchable, and earlier uploads can no longer be listed or deleted. Use the JPA module together with a persistent store.
+- After a failed update one document can have old and new chunks side by side until the next successful run.
+- A successful but incomplete listing, for example with an unmounted subfolder or a retargeted symlink, still removes the missing documents. `max-delete-ratio` exists to limit this, and it only stops large removals.
+- A PDF without extractable text, or any other non-empty file that yields no text, fails on every run. With the `FIXED` strategy this includes files of a few characters.
+- With the in-memory registry and a persistent vector store, files deleted while the application was down stay searchable, a document that became shorter in that time keeps its surplus chunks, and earlier uploads can no longer be listed or deleted. Use the JPA module together with a persistent store.
+- If you call ingestion inside your own transaction, a rollback also undoes the dirty mark in the JPA registry.
+- The JPA module has no switch of its own beyond `rag-engine.enabled`.
 - One file or directory that cannot be visited stops ingestion of its whole source until it is fixed or hidden.
 - Removing a source from the configuration does not delete its chunks.
 - Changing the embedding model is not detected.

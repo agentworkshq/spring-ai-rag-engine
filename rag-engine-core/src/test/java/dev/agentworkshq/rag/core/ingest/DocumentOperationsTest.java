@@ -39,7 +39,8 @@ class DocumentOperationsTest {
     void setUp() {
         store = SimpleVectorStore.builder(new FakeEmbeddingModel()).build();
         pipeline = new IngestionPipeline(() -> store, new DefaultDocumentLoader(1024 * 1024, 10),
-                new RecursiveChunker(100, 10), registry, jobs, "RECURSIVE:100:10", 50, false, 1024 * 1024);
+                new RecursiveChunker(100, 10), registry, jobs, "RECURSIVE:100:10", 50, false, 0.5,
+                1024 * 1024);
         service = new IngestionService(new SourceRegistry(List.of()), pipeline);
     }
 

@@ -93,7 +93,8 @@ public class RagEngineAutoConfiguration {
                 : "RECURSIVE:" + chunking.chunkSize() + ":" + chunking.overlap();
         return new IngestionPipeline(vectorStore::getIfAvailable, documentLoader, chunkingStrategy,
                 documentRegistry, ingestionJobStore, signature, properties.ingestion().batchSize(),
-                properties.ingestion().allowEmptySource(), limits.maxFileSize());
+                properties.ingestion().allowEmptySource(), properties.ingestion().maxDeleteRatio(),
+                limits.maxFileSize());
     }
 
     @Bean

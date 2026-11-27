@@ -70,11 +70,17 @@ public record RagEngineProperties(
         }
     }
 
-    public record Ingestion(@DefaultValue("50") int batchSize, boolean allowEmptySource) {
+    public record Ingestion(
+            @DefaultValue("50") int batchSize,
+            boolean allowEmptySource,
+            @DefaultValue("0.5") double maxDeleteRatio) {
 
         public Ingestion {
             if (batchSize <= 0) {
                 throw new IllegalArgumentException("rag-engine.ingestion.batch-size must be positive");
+            }
+            if (!(maxDeleteRatio >= 0 && maxDeleteRatio <= 1)) {
+                throw new IllegalArgumentException("rag-engine.ingestion.max-delete-ratio must be between 0 and 1");
             }
         }
 

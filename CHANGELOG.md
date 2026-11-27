@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+
+- `rag-engine.ingestion.max-delete-ratio` stops a run that would remove too large a share of a source.
+
+### Changed
+
+- A failure no longer removes a registry entry or old chunks. Entries are marked dirty before the vector store is changed and are ingested or removed again by a later run.
+- Each document is read once, so the hash and the chunks come from the same bytes.
+- A non-empty file that yields no text fails instead of replacing the existing chunks.
+- A result that cannot be written to the job store is still returned. A job no longer stays `RUNNING` after an error.
+- `rag-engine.enabled=false` also switches off the web and JPA modules.
+- The quick start covers requirements, security, CSRF and triggering ingestion.
+- The sample accepts uploads up to 20MB and uses the current Ollama property names.
+- The Maven Compiler and Surefire plugin versions are pinned.
+
 ## [0.1.0] - Not yet released
 
 ### Added

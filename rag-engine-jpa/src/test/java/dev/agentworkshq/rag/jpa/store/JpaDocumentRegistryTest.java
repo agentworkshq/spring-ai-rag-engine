@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agentworkshq.rag.core.store.DocumentRegistry;
 import dev.agentworkshq.rag.core.store.SourceDocumentRecord;
+import dev.agentworkshq.rag.jpa.entity.SourceDocument;
 import dev.agentworkshq.rag.jpa.repository.SourceDocumentRepository;
 import dev.agentworkshq.rag.jpa.testapp.TestApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(classes = TestApplication.class)
@@ -46,6 +48,33 @@ class JpaDocumentRegistryTest {
             assertThat(d.chunkCount()).isEqualTo(5);
         });
         assertThat(repository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void savingAcrossTransactionsUpdatesOnlyTheRowWithTheSameKey() {
+        try {
+            registry.save(new SourceDocumentRecord("docs", "a.md", "default", "h1", 3));
+            registry.save(new SourceDocumentRecord("docs", "a.md", "other", "h1", 3));
+            registry.save(new SourceDocumentRecord("web", "a.md", "default", "h1", 3));
+            Long id = row("docs", "default").getId();
+
+            registry.save(new SourceDocumentRecord("docs", "a.md", "default",
+                    SourceDocumentRecord.DIRTY_HASH, 7));
+
+            assertThat(repository.count()).isEqualTo(3);
+            assertThat(row("docs", "default").getId()).isEqualTo(id);
+            assertThat(registry.find("docs", "a.md", "default")).contains(new SourceDocumentRecord("docs", "a.md",
+                    "default", SourceDocumentRecord.DIRTY_HASH, 7));
+            assertThat(row("docs", "other").getContentHash()).isEqualTo("h1");
+            assertThat(row("web", "default").getContentHash()).isEqualTo("h1");
+        } finally {
+            repository.deleteAll();
+        }
+    }
+
+    private SourceDocument row(String sourceName, String tenantId) {
+        return repository.findBySourceNameAndExternalIdAndTenantId(sourceName, "a.md", tenantId).orElseThrow();
     }
 
     @Test

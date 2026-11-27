@@ -53,7 +53,7 @@ class IngestionPipelineTest {
     private IngestionPipeline pipeline(int chunkSize, int batchSize, boolean allowEmpty) {
         return new IngestionPipeline(() -> store, new DefaultDocumentLoader(1024 * 1024, 10),
                 new RecursiveChunker(chunkSize, 10), registry, jobs, "RECURSIVE:" + chunkSize + ":10", batchSize,
-                allowEmpty, 1024 * 1024);
+                allowEmpty, 0.5, 1024 * 1024);
     }
 
     private IngestionPipeline pipeline() {
@@ -173,6 +173,8 @@ class IngestionPipelineTest {
         pipeline().ingest(source, "A");
         write("a.txt", SENTENCES.repeat(6));
         pipeline().ingest(source, "A");
+        Files.delete(root.resolve("a.txt"));
+        pipeline(100, 50, true).ingest(source, "A");
 
         assertThat(store.deleteFilters).isNotEmpty().allSatisfy(f -> assertThat(f).contains(ChunkMetadata.TENANT_ID));
     }
@@ -197,7 +199,8 @@ class IngestionPipelineTest {
 
         assertThat(result.added()).isEqualTo(2);
         assertThat(result.failed()).isEqualTo(1);
-        assertThat(registry.find("docs", "b.txt", "t1")).isEmpty();
+        assertThat(registry.find("docs", "b.txt", "t1")).hasValueSatisfying(r ->
+                assertThat(r.contentHash()).isEqualTo(SourceDocumentRecord.DIRTY_HASH));
         IngestionJobRecord job = job(result);
         assertThat(job.status()).isEqualTo(IngestionStatus.DONE);
         assertThat(job.errorMessage()).isEqualTo("1 documents failed").doesNotContain("BOOM");
@@ -212,13 +215,14 @@ class IngestionPipelineTest {
         IngestionResult failed = pipeline().ingest(source, "t1");
 
         assertThat(failed.failed()).isEqualTo(1);
-        assertThat(stored("t1")).isEmpty();
-        assertThat(registry.find("docs", "a.txt", "t1")).isEmpty();
+        assertThat(stored("t1")).isNotEmpty().allSatisfy(c -> assertThat(c.getText()).contains("Alpha"));
+        assertThat(registry.find("docs", "a.txt", "t1")).hasValueSatisfying(r ->
+                assertThat(r.contentHash()).isEqualTo(SourceDocumentRecord.DIRTY_HASH));
 
         write("a.txt", "Omega content. ".repeat(20));
         IngestionResult retry = pipeline().ingest(source, "t1");
 
-        assertThat(retry.added()).isEqualTo(1);
+        assertThat(retry.updated()).isEqualTo(1);
         assertThat(stored("t1")).isNotEmpty().allSatisfy(c -> assertThat(c.getText()).contains("Omega"));
     }
 

@@ -10,15 +10,17 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   ai:
     ollama:
       base-url: http://localhost:11434
       chat:
-        options:
-          model: llama3.2
+        model: llama3.2
       embedding:
-        options:
-          model: nomic-embed-text
+        model: nomic-embed-text
       init:
         pull-model-strategy: when_missing
         timeout: 15m

@@ -15,7 +15,7 @@ class ToStringPrivacyTest {
         RagEngineProperties.Chunking chunking =
                 new RagEngineProperties.Chunking(RagEngineProperties.Chunking.Strategy.RECURSIVE, 800, 100);
         RagEngineProperties.Limits limits = new RagEngineProperties.Limits(DataSize.ofMegabytes(1), 10);
-        RagEngineProperties.Ingestion ingestion = new RagEngineProperties.Ingestion(50, false);
+        RagEngineProperties.Ingestion ingestion = new RagEngineProperties.Ingestion(50, false, 0.5);
         RagEngineProperties.Retrieval retrieval = new RagEngineProperties.Retrieval(6, 20, 0.65, false);
         RagEngineProperties.Answer answer = new RagEngineProperties.Answer(true, MARKER, 12000, 2000);
         RagEngineProperties.Source source = new RagEngineProperties.Source(MARKER,

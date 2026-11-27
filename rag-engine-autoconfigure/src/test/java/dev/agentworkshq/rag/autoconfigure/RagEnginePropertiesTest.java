@@ -26,6 +26,7 @@ class RagEnginePropertiesTest {
         assertThat(props.limits().maxFileSize().toBytes()).isEqualTo(20L * 1024 * 1024);
         assertThat(props.limits().maxPages()).isEqualTo(500);
         assertThat(props.ingestion().batchSize()).isEqualTo(50);
+        assertThat(props.ingestion().maxDeleteRatio()).isEqualTo(0.5);
         assertThat(props.sources()).isEmpty();
     }
 
@@ -62,6 +63,12 @@ class RagEnginePropertiesTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RagEngineProperties.Limits(org.springframework.util.unit.DataSize.ofMegabytes(1), 0))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new RagEngineProperties.Ingestion(0, false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new RagEngineProperties.Ingestion(0, false, 0.5))
+                .isInstanceOf(IllegalArgumentException.class);
+        for (double ratio : new double[] {-0.1, 1.1, Double.NaN}) {
+            assertThatThrownBy(() -> new RagEngineProperties.Ingestion(50, false, ratio))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("max-delete-ratio");
+        }
     }
 }
