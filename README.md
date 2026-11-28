@@ -25,12 +25,12 @@ The artifacts are not on Maven Central yet. Run `./mvnw install -DskipTests` (`.
 <dependency>
     <groupId>dev.agentworkshq</groupId>
     <artifactId>rag-engine-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1-SNAPSHOT</version>
 </dependency>
 <dependency>
     <groupId>dev.agentworkshq</groupId>
     <artifactId>rag-engine-web</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -285,7 +285,7 @@ Persistence is optional. By default ingestion state is kept in memory. Add `rag-
 <dependency>
     <groupId>dev.agentworkshq</groupId>
     <artifactId>rag-engine-jpa</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1-SNAPSHOT</version>
 </dependency>
 ```
 

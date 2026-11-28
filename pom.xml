@@ -6,7 +6,7 @@
 
     <groupId>dev.agentworkshq</groupId>
     <artifactId>spring-ai-rag-engine-parent</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>spring-ai-rag-engine</name>
